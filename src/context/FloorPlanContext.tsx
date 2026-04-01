@@ -6,7 +6,7 @@ import React, {
   useCallback,
   useRef,
 } from 'react';
-import { AppState, Action, Zone, ZoneId, Side, Position, TableSize, Table, TableNumber } from '../types';
+import { AppState, Action, Zone, ZoneId, Side, Position, TableSize, Table, TableNumber, GuestInfo, GuestTag } from '../types';
 
 // ─── Numbering logic ──────────────────────────────────────────────────────────
 // Schema:
@@ -46,7 +46,7 @@ function makeBT(): Table {
     zone: 1,
     side: 'left',
     position: 'top',
-    guests: Array(6).fill(''),
+    guests: Array(6).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] })),
   };
 }
 
@@ -90,7 +90,7 @@ function reducer(state: AppState, action: Action): AppState {
             zone,
             side,
             position,
-            guests: Array(size).fill(''),
+            guests: Array(size).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] })),
           };
           return { ...z, tables: [...z.tables, newTable] };
         }),
@@ -116,7 +116,7 @@ function reducer(state: AppState, action: Action): AppState {
           tables: z.tables.map(t => {
             if (t.id !== id) return t;
             // resize guests array
-            const newGuests = Array(size).fill('').map((_, i) => guests[i] ?? '');
+            const newGuests: GuestInfo[] = Array(size).fill(null).map((_, i) => guests[i] ?? { firstName: '', lastName: '', tags: [] });
             return { ...t, name, size, guests: newGuests };
           }),
         })),
@@ -146,6 +146,8 @@ interface FloorPlanContextValue {
   nextPosition: (zone: ZoneId, side: Side) => Position | null;
   isEditMode: boolean;
   setEditMode: (v: boolean) => void;
+  showFullName: boolean;
+  setShowFullName: (v: boolean) => void;
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null);
@@ -161,8 +163,22 @@ function migrate(parsed: AppState): AppState {
   const bt = zone1?.tables.find(t => t.id === 'bt');
   if (bt && bt.size !== 6) {
     bt.size = 6;
-    bt.guests = Array(6).fill('').map((_, i) => bt.guests[i] ?? '');
+    bt.guests = Array(6).fill(null).map((_, i) => bt.guests[i] ?? { firstName: '', lastName: '', tags: [] });
   }
+  // Migrate old string[] or {name,tags} guests to GuestInfo {firstName,lastName,tags}
+  parsed.zones.forEach(z => z.tables.forEach(t => {
+    t.guests = t.guests.map((g: any) => {
+      if (typeof g === 'string') {
+        const [first = '', ...rest] = (g as string).split(' ');
+        return { firstName: first, lastName: rest.join(' '), tags: [], menu: undefined };
+      }
+      if (g.name !== undefined && g.firstName === undefined) {
+        const [first = '', ...rest] = (g.name as string).split(' ');
+        return { firstName: first, lastName: rest.join(' '), tags: g.tags ?? [], menu: g.menu };
+      }
+      return g;
+    });
+  }));
   return parsed;
 }
 
@@ -209,6 +225,7 @@ async function saveToServer(state: AppState): Promise<void> {
 
 export function FloorPlanProvider({ children }: { children: React.ReactNode }) {
   const [isEditMode, setEditMode] = React.useState(false);
+  const [showFullName, setShowFullName] = React.useState(false);
   const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
   const [hydrated, setHydrated] = React.useState(false);
   const saveTimer = useRef<number>();
@@ -271,7 +288,7 @@ export function FloorPlanProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <FloorPlanContext.Provider value={{ state, dispatch, allTables, getZone, getTablesBySide, canAddTable, nextPosition, isEditMode, setEditMode }}>
+    <FloorPlanContext.Provider value={{ state, dispatch, allTables, getZone, getTablesBySide, canAddTable, nextPosition, isEditMode, setEditMode, showFullName, setShowFullName }}>
       {children}
     </FloorPlanContext.Provider>
   );

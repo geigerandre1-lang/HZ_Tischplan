@@ -2,6 +2,7 @@ import React, { useRef, useState, useCallback, useEffect } from 'react';
 import { Table } from '../../types';
 import { ZoneSvg, ZONE_W, AISLE_W, ZONE_H } from './Zone';
 import { ZoneId } from '../../types';
+import { useFloorPlan } from '../../context/FloorPlanContext';
 
 // Outer aisle between zones
 const OUTER_AISLE_W = 36;
@@ -26,6 +27,7 @@ interface FloorPlanProps {
 
 export function FloorPlan({ onTableClick, onTableRemove }: FloorPlanProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const { showFullName, setShowFullName } = useFloorPlan();
 
   // Zoom/pan state
   const [transform, setTransform] = useState({ scale: 1, tx: 0, ty: 0 });
@@ -97,14 +99,23 @@ export function FloorPlan({ onTableClick, onTableRemove }: FloorPlanProps) {
 
   return (
     <div className="relative w-full h-full overflow-hidden select-none">
-      {/* Reset zoom button */}
-      <button
-        onClick={resetView}
-        className="absolute top-3 right-3 z-10 btn-ghost text-xs px-2 py-1"
-        title="Ansicht zurücksetzen"
-      >
-        ⟳ Zurücksetzen
-      </button>
+      {/* Controls */}
+      <div className="absolute top-3 right-3 z-10 flex gap-2">
+        <button
+          onClick={() => setShowFullName(!showFullName)}
+          className="btn-ghost text-xs px-2 py-1"
+          title="Vor- und Nachname umschalten"
+        >
+          {showFullName ? 'Vorname' : 'Vor+Nachname'}
+        </button>
+        <button
+          onClick={resetView}
+          className="btn-ghost text-xs px-2 py-1"
+          title="Ansicht zurücksetzen"
+        >
+          ⟳ Zurücksetzen
+        </button>
+      </div>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${SVG_W} ${SVG_H}`}

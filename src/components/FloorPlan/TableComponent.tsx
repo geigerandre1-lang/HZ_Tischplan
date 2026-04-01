@@ -1,5 +1,5 @@
 import React from 'react';
-import { Table } from '../../types';
+import { Table, GuestInfo, GUEST_TAGS, MENU_CHOICES, guestDisplayName } from '../../types';
 import { useFloorPlan } from '../../context/FloorPlanContext';
 
 interface TableComponentProps {
@@ -30,6 +30,7 @@ function Chairs({
   vertical,
   guests,
   seatOffset,
+  showFullName,
 }: {
   count: number;
   tableX: number;
@@ -37,14 +38,34 @@ function Chairs({
   tableW: number;
   tableH: number;
   vertical: boolean;
-  guests: string[];
+  guests: GuestInfo[];
   seatOffset: number;
+  showFullName: boolean;
 }) {
   const half = count / 2;
   const chairsTop: JSX.Element[] = [];
   const chairsBottom: JSX.Element[] = [];
 
   const trunc = (s: string) => s.length > 9 ? s.slice(0, 8) + '…' : s;
+  const displayName = (g: GuestInfo | undefined) => g ? trunc(guestDisplayName(g, showFullName)) : '';
+  const guestFill = (g: GuestInfo | undefined): string => {
+    if (!g || !g.firstName.trim()) return EMPTY_COLOR;
+    if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? OCCUPIED_COLOR;
+    return OCCUPIED_COLOR;
+  };
+  const guestStroke = (g: GuestInfo | undefined): string => {
+    if (!g || !g.firstName.trim()) return EMPTY_STROKE;
+    if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? OCCUPIED_STROKE;
+    return OCCUPIED_STROKE;
+  };
+  const tagLabel = (g: GuestInfo | undefined): string => {
+    if (!g || g.tags.length === 0) return '';
+    return '(' + g.tags.map(id => GUEST_TAGS.find(t => t.id === id)?.short ?? id).join(',') + ')';
+  };
+  const menuColor = (g: GuestInfo | undefined): string | null => {
+    if (!g?.menu) return null;
+    return MENU_CHOICES.find(m => m.id === g.menu)?.color ?? null;
+  };
 
   if (!vertical) {
     // horizontal table: chairs on top and bottom
@@ -53,8 +74,8 @@ function Chairs({
     for (let i = 0; i < half; i++) {
       const cx = startX + i * (CHAIR_W + CHAIR_GAP);
       const guestIdx = seatOffset + i;
-      const guestName = guests[guestIdx]?.trim() ?? '';
-      const occupied = !!guestName;
+      const guest = guests[guestIdx];
+      const guestName = guest?.firstName.trim() ?? '';
       const chairY = tableY - CHAIR_H - 4;
       const seatNumTop = seatOffset + i + 1;
       // top chair
@@ -66,22 +87,40 @@ function Chairs({
             width={CHAIR_W}
             height={CHAIR_H}
             rx={CHAIR_H / 2}
-            fill={occupied ? OCCUPIED_COLOR : EMPTY_COLOR}
-            stroke={occupied ? OCCUPIED_STROKE : EMPTY_STROKE}
+            fill={guestFill(guest)}
+            stroke={guestStroke(guest)}
             strokeWidth={1}
           />
+          {menuColor(guest) !== null && (
+            <circle cx={cx + CHAIR_W - 3} cy={chairY + 3} r={2.5} fill={menuColor(guest)!} style={{ pointerEvents: 'none' }} />
+          )}
           {guestName ? (
-            <text
-              x={cx + CHAIR_W / 2}
-              y={chairY - 2}
-              textAnchor="middle"
-              fill="#e8c97a"
-              fontSize={6.5}
-              fontFamily="Cormorant Garamond, serif"
-              style={{ pointerEvents: 'none' }}
-            >
-              {trunc(guestName)}
-            </text>
+            <>
+              <text
+                x={cx + CHAIR_W / 2}
+                y={chairY - 2}
+                textAnchor="middle"
+                fill="#e8c97a"
+                fontSize={6.5}
+                fontFamily="Cormorant Garamond, serif"
+                style={{ pointerEvents: 'none' }}
+              >
+                {displayName(guest)}
+              </text>
+              {tagLabel(guest) && (
+                <text
+                  x={cx + CHAIR_W / 2}
+                  y={chairY - 9}
+                  textAnchor="middle"
+                  fill="#e8c97a"
+                  fontSize={5}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {tagLabel(guest)}
+                </text>
+              )}
+            </>
           ) : (
             <text
               x={cx + CHAIR_W / 2}
@@ -99,8 +138,8 @@ function Chairs({
       );
       // bottom chair
       const guestIdxB = seatOffset + half + i;
-      const guestNameB = guests[guestIdxB]?.trim() ?? '';
-      const occupiedB = !!guestNameB;
+      const guestB = guests[guestIdxB];
+      const guestNameB = guestB?.firstName.trim() ?? '';
       const chairYB = tableY + tableH + 4;
       const seatNumBot = seatOffset + half + i + 1;
       chairsBottom.push(
@@ -111,22 +150,40 @@ function Chairs({
             width={CHAIR_W}
             height={CHAIR_H}
             rx={CHAIR_H / 2}
-            fill={occupiedB ? OCCUPIED_COLOR : EMPTY_COLOR}
-            stroke={occupiedB ? OCCUPIED_STROKE : EMPTY_STROKE}
+            fill={guestFill(guestB)}
+            stroke={guestStroke(guestB)}
             strokeWidth={1}
           />
+          {menuColor(guestB) !== null && (
+            <circle cx={cx + CHAIR_W - 3} cy={chairYB + 3} r={2.5} fill={menuColor(guestB)!} style={{ pointerEvents: 'none' }} />
+          )}
           {guestNameB ? (
-            <text
-              x={cx + CHAIR_W / 2}
-              y={chairYB + CHAIR_H + 8}
-              textAnchor="middle"
-              fill="#e8c97a"
-              fontSize={6.5}
-              fontFamily="Cormorant Garamond, serif"
-              style={{ pointerEvents: 'none' }}
-            >
-              {trunc(guestNameB)}
-            </text>
+            <>
+              <text
+                x={cx + CHAIR_W / 2}
+                y={chairYB + CHAIR_H + 8}
+                textAnchor="middle"
+                fill="#e8c97a"
+                fontSize={6.5}
+                fontFamily="Cormorant Garamond, serif"
+                style={{ pointerEvents: 'none' }}
+              >
+                {displayName(guestB)}
+              </text>
+              {tagLabel(guestB) && (
+                <text
+                  x={cx + CHAIR_W / 2}
+                  y={chairYB + CHAIR_H + 14}
+                  textAnchor="middle"
+                  fill="#e8c97a"
+                  fontSize={5}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {tagLabel(guestB)}
+                </text>
+              )}
+            </>
           ) : (
             <text
               x={cx + CHAIR_W / 2}
@@ -150,8 +207,8 @@ function Chairs({
     for (let i = 0; i < half; i++) {
       const cy = startY + i * (CHAIR_W + CHAIR_GAP);
       const guestIdx = seatOffset + i;
-      const guestName = guests[guestIdx]?.trim() ?? '';
-      const occupied = !!guestName;
+      const guest = guests[guestIdx];
+      const guestName = guest?.firstName.trim() ?? '';
       const chairX = tableX - CHAIR_H - 4;
       const seatNumL = seatOffset + i + 1;
       // left chair
@@ -163,22 +220,40 @@ function Chairs({
             width={CHAIR_H}
             height={CHAIR_W}
             rx={CHAIR_H / 2}
-            fill={occupied ? OCCUPIED_COLOR : EMPTY_COLOR}
-            stroke={occupied ? OCCUPIED_STROKE : EMPTY_STROKE}
+            fill={guestFill(guest)}
+            stroke={guestStroke(guest)}
             strokeWidth={1}
           />
+          {menuColor(guest) !== null && (
+            <circle cx={chairX + CHAIR_H - 3} cy={cy + 3} r={2.5} fill={menuColor(guest)!} style={{ pointerEvents: 'none' }} />
+          )}
           {guestName ? (
-            <text
-              x={chairX - 3}
-              y={cy + CHAIR_W / 2 + 2.5}
-              textAnchor="end"
-              fill="#e8c97a"
-              fontSize={6.5}
-              fontFamily="Cormorant Garamond, serif"
-              style={{ pointerEvents: 'none' }}
-            >
-              {trunc(guestName)}
-            </text>
+            <>
+              <text
+                x={chairX - 3}
+                y={cy + CHAIR_W / 2 + 2.5}
+                textAnchor="end"
+                fill="#e8c97a"
+                fontSize={6.5}
+                fontFamily="Cormorant Garamond, serif"
+                style={{ pointerEvents: 'none' }}
+              >
+                {displayName(guest)}
+              </text>
+              {tagLabel(guest) && (
+                <text
+                  x={chairX - 3}
+                  y={cy + CHAIR_W / 2 + 9}
+                  textAnchor="end"
+                  fill="#e8c97a"
+                  fontSize={5}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {tagLabel(guest)}
+                </text>
+              )}
+            </>
           ) : (
             <text
               x={chairX + CHAIR_H / 2}
@@ -195,8 +270,8 @@ function Chairs({
         </g>
       );
       const guestIdxR = seatOffset + half + i;
-      const guestNameR = guests[guestIdxR]?.trim() ?? '';
-      const occupiedR = !!guestNameR;
+      const guestR = guests[guestIdxR];
+      const guestNameR = guestR?.firstName.trim() ?? '';
       const chairXR = tableX + tableW + 4;
       const seatNumR = seatOffset + half + i + 1;
       // right chair
@@ -208,22 +283,40 @@ function Chairs({
             width={CHAIR_H}
             height={CHAIR_W}
             rx={CHAIR_H / 2}
-            fill={occupiedR ? OCCUPIED_COLOR : EMPTY_COLOR}
-            stroke={occupiedR ? OCCUPIED_STROKE : EMPTY_STROKE}
+            fill={guestFill(guestR)}
+            stroke={guestStroke(guestR)}
             strokeWidth={1}
           />
+          {menuColor(guestR) !== null && (
+            <circle cx={chairXR + 3} cy={cy + 3} r={2.5} fill={menuColor(guestR)!} style={{ pointerEvents: 'none' }} />
+          )}
           {guestNameR ? (
-            <text
-              x={chairXR + CHAIR_H + 3}
-              y={cy + CHAIR_W / 2 + 2.5}
-              textAnchor="start"
-              fill="#e8c97a"
-              fontSize={6.5}
-              fontFamily="Cormorant Garamond, serif"
-              style={{ pointerEvents: 'none' }}
-            >
-              {trunc(guestNameR)}
-            </text>
+            <>
+              <text
+                x={chairXR + CHAIR_H + 3}
+                y={cy + CHAIR_W / 2 + 2.5}
+                textAnchor="start"
+                fill="#e8c97a"
+                fontSize={6.5}
+                fontFamily="Cormorant Garamond, serif"
+                style={{ pointerEvents: 'none' }}
+              >
+                {displayName(guestR)}
+              </text>
+              {tagLabel(guestR) && (
+                <text
+                  x={chairXR + CHAIR_H + 3}
+                  y={cy + CHAIR_W / 2 + 9}
+                  textAnchor="start"
+                  fill="#e8c97a"
+                  fontSize={5}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {tagLabel(guestR)}
+                </text>
+              )}
+            </>
           ) : (
             <text
               x={chairXR + CHAIR_H / 2}
@@ -261,8 +354,8 @@ export function TableComponent({
   onRemove,
 }: TableComponentProps) {
   const isBT = table.id === 'bt';
-  const { isEditMode } = useFloorPlan();
-  const occupiedCount = table.guests.filter(g => g.trim().length > 0).length;
+  const { isEditMode, showFullName } = useFloorPlan();
+  const occupiedCount = table.guests.filter(g => g.firstName.trim().length > 0).length;
 
   // label chars for number display
   const numLabel = String(table.number);
@@ -278,6 +371,7 @@ export function TableComponent({
         vertical={isVertical}
         guests={table.guests}
         seatOffset={0}
+        showFullName={showFullName}
       />
 
       {/* Table rectangle */}

@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useFloorPlan } from '../../context/FloorPlanContext';
-import { AppState, Table, TableSize, ZoneId, Side, Position } from '../../types';
+import { AppState, Table, TableSize, ZoneId, Side, Position, GuestInfo, GuestTag, GUEST_TAGS, MenuChoice, MENU_CHOICES } from '../../types';
 import { ChevronDown, ChevronRight, Download, Search, Upload } from 'lucide-react';
 
 type SortKey = 'number' | 'name';
@@ -15,6 +15,9 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const rsvpInputRef = useRef<HTMLInputElement>(null);
+
+  const guestFullName = (g: GuestInfo) => `${g.firstName} ${g.lastName}`.trim();
 
   const sorted = useMemo(() => {
     return [...allTables].sort((a, b) => {
@@ -36,8 +39,9 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
     const results: { table: Table; seatIndex: number; guestName: string }[] = [];
     allTables.forEach(t => {
       t.guests.forEach((g, i) => {
-        if (g.trim().toLowerCase().includes(q)) {
-          results.push({ table: t, seatIndex: i + 1, guestName: g });
+        const full = guestFullName(g);
+        if (full.toLowerCase().includes(q)) {
+          results.push({ table: t, seatIndex: i + 1, guestName: full });
         }
       });
     });
@@ -63,9 +67,10 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
 
   // ── CSV Export ────────────────────────────────────────────────────────────
   const exportCSV = () => {
-    const rows = [['Tischnummer', 'Tischname', 'Tischgroesse', 'Zone', 'Seite', 'Position', 'Sitzplatz', 'Gast']];
+    const rows = [['Tischnummer', 'Tischname', 'Tischgroesse', 'Zone', 'Seite', 'Position', 'Sitzplatz', 'Vorname', 'Nachname', 'Menu', 'Tags']];
     sorted.forEach(t => {
       t.guests.forEach((g, i) => {
+        const menuEntry = g.menu ? (MENU_CHOICES.find(m => m.id === g.menu)?.label ?? '') : '';
         rows.push([
           String(t.number),
           t.name,
@@ -74,7 +79,10 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           t.side,
           t.position,
           String(i + 1),
-          g,
+          g.firstName,
+          g.lastName,
+          menuEntry,
+          g.tags.map(id => GUEST_TAGS.find(tg => tg.id === id)?.short ?? id).join(','),
         ]);
       });
     });
@@ -86,102 +94,6 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
     a.download = 'Hochzeitstischplan.csv';
     a.click();
     URL.revokeObjectURL(url);
-  };
-
-  // ── CSV Import ────────────────────────────────────────────────────────────
-  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setImportError(null);
-    setImportSuccess(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      try {
-        const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) throw new Error('Leere oder ungültige CSV-Datei.');
-
-        // Parse header
-        const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
-        const col = (name: string) => header.indexOf(name);
-        const iNum  = col('tischnummer');
-        const iName = col('tischname');
-        const iSize = col('tischgroesse');
-        const iZone = col('zone');
-        const iSide = col('seite');
-        const iPos  = col('position');
-        const iSeat = col('sitzplatz');
-        const iGuest = col('gast');
-        if ([iNum, iName, iSize, iZone, iSide, iPos, iSeat, iGuest].some(x => x === -1)) {
-          throw new Error('CSV-Format ungültig. Benötigte Spalten: Tischnummer, Tischname, Tischgroesse, Zone, Seite, Position, Sitzplatz, Gast.');
-        }
-
-        // Group rows by Tischnummer
-        const tableMap = new Map<string, { num: string; name: string; size: number; zone: number; side: string; pos: string; guests: Map<number, string> }>();
-        for (let i = 1; i < lines.length; i++) {
-          const cols = parseCSVLine(lines[i]);
-          if (cols.length < 8) continue;
-          const num   = cols[iNum].trim();
-          const name  = cols[iName].trim();
-          const size  = parseInt(cols[iSize].trim(), 10);
-          const zone  = parseInt(cols[iZone].trim(), 10);
-          const side  = cols[iSide].trim();
-          const pos   = cols[iPos].trim();
-          const seat  = parseInt(cols[iSeat].trim(), 10);
-          const guest = cols[iGuest].trim();
-          if (!tableMap.has(num)) {
-            tableMap.set(num, { num, name, size, zone, side, pos, guests: new Map() });
-          }
-          tableMap.get(num)!.guests.set(seat, guest);
-        }
-
-        // Build new AppState
-        const VALID_SIZES: TableSize[] = [6, 8, 10];
-        const newZones: AppState['zones'] = [1, 2, 3, 4].map(id => ({ id: id as ZoneId, tables: [] }));
-
-        let makeId = () => `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-
-        tableMap.forEach(({ num, name, size, zone, side, pos, guests }) => {
-          const tableSize: TableSize = VALID_SIZES.includes(size as TableSize) ? (size as TableSize) : 8;
-          const zoneId = ([1, 2, 3, 4].includes(zone) ? zone : 1) as ZoneId;
-          const tableSide: Side = side === 'right' ? 'right' : 'left';
-          const tablePos: Position = pos === 'bottom' ? 'bottom' : 'top';
-          const isBT = num === 'BT';
-          const guestsArr: string[] = Array(tableSize).fill('');
-          guests.forEach((g, seat) => {
-            if (seat >= 1 && seat <= tableSize) guestsArr[seat - 1] = g;
-          });
-
-          const tableObj: Table = {
-            id: isBT ? 'bt' : makeId(),
-            number: isBT ? 'BT' : (parseInt(num, 10) || 0),
-            name,
-            size: isBT ? (VALID_SIZES.includes(tableSize) ? tableSize : 6) : tableSize,
-            zone: zoneId,
-            side: tableSide,
-            position: tablePos,
-            guests: guestsArr,
-          };
-
-          const zoneEntry = newZones.find(z => z.id === zoneId);
-          if (zoneEntry) zoneEntry.tables.push(tableObj);
-        });
-
-        // Ensure BT exists in zone 1
-        const zone1 = newZones.find(z => z.id === 1)!;
-        if (!zone1.tables.find(t => t.id === 'bt')) {
-          zone1.tables.unshift({ id: 'bt', number: 'BT', name: 'Brauttisch', size: 6, zone: 1, side: 'left', position: 'top', guests: Array(6).fill('') });
-        }
-
-        dispatch({ type: 'LOAD_STATE', payload: { zones: newZones } });
-        setImportSuccess(`Import erfolgreich: ${tableMap.size} Tische geladen.`);
-      } catch (err) {
-        setImportError(err instanceof Error ? err.message : 'Unbekannter Fehler.');
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file, 'utf-8');
   };
 
   function parseCSVLine(line: string): string[] {
@@ -203,6 +115,206 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
     return result;
   }
 
+  // ── App CSV Import ────────────────────────────────────────────────────────
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) throw new Error('Leere oder ungültige CSV-Datei.');
+
+        const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+        const col = (name: string) => header.indexOf(name);
+        const iNum    = col('tischnummer');
+        const iName   = col('tischname');
+        const iSize   = col('tischgroesse');
+        const iZone   = col('zone');
+        const iSide   = col('seite');
+        const iPos    = col('position');
+        const iSeat   = col('sitzplatz');
+        // Support both old 'gast' (single name) and new 'vorname'/'nachname'
+        const iVorname  = col('vorname');
+        const iNachname = col('nachname');
+        const iGast     = col('gast');
+        const iMenu   = col('menu');
+        const iTags   = col('tags');
+
+        if ([iNum, iName, iSize, iZone, iSide, iPos, iSeat].some(x => x === -1)) {
+          throw new Error('CSV-Format ungültig. Benötigte Spalten: Tischnummer, Tischname, Tischgroesse, Zone, Seite, Position, Sitzplatz.');
+        }
+        if (iVorname === -1 && iGast === -1) {
+          throw new Error('CSV-Format ungültig. Benötigt: Vorname/Nachname oder Gast-Spalte.');
+        }
+
+        const tableMap = new Map<string, { num: string; name: string; size: number; zone: number; side: string; pos: string; guests: Map<number, GuestInfo> }>();
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseCSVLine(lines[i]);
+          if (cols.length < 7) continue;
+          const num   = cols[iNum].trim();
+          const name  = cols[iName].trim();
+          const size  = parseInt(cols[iSize].trim(), 10);
+          const zone  = parseInt(cols[iZone].trim(), 10);
+          const side  = cols[iSide].trim();
+          const pos   = cols[iPos].trim();
+          const seat  = parseInt(cols[iSeat].trim(), 10);
+
+          let firstName = '';
+          let lastName = '';
+          if (iVorname >= 0) {
+            firstName = cols[iVorname]?.trim() ?? '';
+            lastName  = iNachname >= 0 ? (cols[iNachname]?.trim() ?? '') : '';
+          } else if (iGast >= 0) {
+            const parts = (cols[iGast]?.trim() ?? '').split(' ');
+            firstName = parts[0] ?? '';
+            lastName  = parts.slice(1).join(' ');
+          }
+
+          let menu: MenuChoice | undefined;
+          if (iMenu >= 0) {
+            const raw = cols[iMenu]?.trim().toLowerCase() ?? '';
+            if (raw === 'fleisch') menu = 'fleisch';
+            else if (raw === 'fisch') menu = 'fisch';
+            else if (raw === 'vegetarisch') menu = 'vegetarisch';
+          }
+
+          const tagsRaw = iTags >= 0 ? (cols[iTags]?.trim() ?? '') : '';
+          const tags: GuestTag[] = tagsRaw
+            ? tagsRaw.split(',').map(s => s.trim()).filter(s => GUEST_TAGS.some(t => t.short === s)).map(s => GUEST_TAGS.find(t => t.short === s)!.id)
+            : [];
+
+          if (!tableMap.has(num)) {
+            tableMap.set(num, { num, name, size, zone, side, pos, guests: new Map() });
+          }
+          tableMap.get(num)!.guests.set(seat, { firstName, lastName, tags, menu });
+        }
+
+        const VALID_SIZES: TableSize[] = [6, 8, 10];
+        const newZones: AppState['zones'] = [1, 2, 3, 4].map(id => ({ id: id as ZoneId, tables: [] }));
+        const makeId = () => `t-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+        tableMap.forEach(({ num, name, size, zone, side, pos, guests }) => {
+          const tableSize: TableSize = VALID_SIZES.includes(size as TableSize) ? (size as TableSize) : 8;
+          const zoneId = ([1, 2, 3, 4].includes(zone) ? zone : 1) as ZoneId;
+          const tableSide: Side = side === 'right' ? 'right' : 'left';
+          const tablePos: Position = pos === 'bottom' ? 'bottom' : 'top';
+          const isBT = num === 'BT';
+          const guestsArr: GuestInfo[] = Array(tableSize).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] }));
+          guests.forEach((g, seat) => {
+            if (seat >= 1 && seat <= tableSize) guestsArr[seat - 1] = g;
+          });
+
+          const tableObj: Table = {
+            id: isBT ? 'bt' : makeId(),
+            number: isBT ? 'BT' : (parseInt(num, 10) || 0),
+            name,
+            size: isBT ? (VALID_SIZES.includes(tableSize) ? tableSize : 6) : tableSize,
+            zone: zoneId,
+            side: tableSide,
+            position: tablePos,
+            guests: guestsArr,
+          };
+
+          newZones.find(z => z.id === zoneId)?.tables.push(tableObj);
+        });
+
+        const zone1 = newZones.find(z => z.id === 1)!;
+        if (!zone1.tables.find(t => t.id === 'bt')) {
+          zone1.tables.unshift({
+            id: 'bt', number: 'BT', name: 'Brauttisch', size: 6, zone: 1, side: 'left', position: 'top',
+            guests: Array(6).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] })),
+          });
+        }
+
+        dispatch({ type: 'LOAD_STATE', payload: { zones: newZones } });
+        setImportSuccess(`Import erfolgreich: ${tableMap.size} Tische geladen.`);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Unbekannter Fehler.');
+      } finally {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
+  // ── RSVP CSV Import ───────────────────────────────────────────────────────
+  // Expected columns: First Name (0), Last Name (1), ..., RSVP (4 or similar), Menüauswahl (5)
+  const handleRsvpImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError(null);
+    setImportSuccess(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
+        const lines = text.split(/\r?\n/).filter(l => l.trim());
+        if (lines.length < 2) throw new Error('Leere oder ungültige RSVP-Datei.');
+
+        const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+        // Find column indices flexibly
+        const findCol = (...names: string[]) => {
+          for (const n of names) {
+            const idx = header.findIndex(h => h.includes(n.toLowerCase()));
+            if (idx >= 0) return idx;
+          }
+          return -1;
+        };
+        const iFirst  = findCol('first name', 'vorname', 'firstname');
+        const iLast   = findCol('last name', 'nachname', 'lastname');
+        const iRsvp   = findCol('rsvp');
+        const iMenu   = findCol('menüauswahl', 'menuauswahl', 'menu');
+
+        if (iFirst === -1 || iLast === -1) {
+          throw new Error('RSVP-CSV benötigt Spalten für Vorname und Nachname (z.B. "First Name", "Last Name").');
+        }
+
+        interface RsvpGuest { firstName: string; lastName: string; menu?: MenuChoice }
+        const guests: RsvpGuest[] = [];
+        for (let i = 1; i < lines.length; i++) {
+          const cols = parseCSVLine(lines[i]);
+          const firstName = cols[iFirst]?.trim() ?? '';
+          const lastName  = cols[iLast]?.trim() ?? '';
+          if (!firstName && !lastName) continue;
+
+          // Filter by RSVP if column exists
+          if (iRsvp >= 0) {
+            const rsvpVal = cols[iRsvp]?.trim().toLowerCase() ?? '';
+            if (!rsvpVal.includes('attending') && rsvpVal !== '') continue;
+          }
+
+          let menu: MenuChoice | undefined;
+          if (iMenu >= 0) {
+            const raw = cols[iMenu]?.trim().toLowerCase() ?? '';
+            if (raw.includes('fleisch')) menu = 'fleisch';
+            else if (raw.includes('fisch')) menu = 'fisch';
+            else if (raw.includes('vegetar')) menu = 'vegetarisch';
+          }
+
+          guests.push({ firstName, lastName, menu });
+        }
+
+        if (guests.length === 0) {
+          throw new Error('Keine Gäste mit RSVP "Attending" gefunden.');
+        }
+
+        // Show summary only — RSVP data is for reference, seating assignment done via TableModal
+        const preview = guests.slice(0, 5).map(g => `${g.firstName} ${g.lastName}`).join(', ');
+        const more = guests.length > 5 ? ` (+${guests.length - 5} weitere)` : '';
+        setImportSuccess(`RSVP geladen: ${guests.length} Gäste — ${preview}${more}.`);
+      } catch (err) {
+        setImportError(err instanceof Error ? err.message : 'Unbekannter Fehler.');
+      } finally {
+        if (rsvpInputRef.current) rsvpInputRef.current.value = '';
+      }
+    };
+    reader.readAsText(file, 'utf-8');
+  };
+
   const SortArrow = ({ col }: { col: SortKey }) =>
     sortKey === col ? (
       <span className="ml-1 text-gold">{sortDir === 'asc' ? '↑' : '↓'}</span>
@@ -210,7 +322,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
       <span className="ml-1 text-white/20">↕</span>
     );
 
-  const totalGuests = allTables.reduce((s, t) => s + t.guests.filter(g => g.trim()).length, 0);
+  const totalGuests = allTables.reduce((s, t) => s + t.guests.filter(g => g.firstName.trim()).length, 0);
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto" style={{ fontFamily: '"Cormorant Garamond", serif' }}>
@@ -235,13 +347,11 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
             <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2">
               <Upload size={14} /> CSV Import
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="hidden"
-              onChange={handleImport}
-            />
+            <input ref={fileInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleImport} />
+            <button onClick={() => rsvpInputRef.current?.click()} className="btn-ghost flex items-center gap-2 border-gold/40 text-gold/80 hover:text-gold">
+              <Upload size={14} /> RSVP Import
+            </button>
+            <input ref={rsvpInputRef} type="file" accept=".csv,text/csv" className="hidden" onChange={handleRsvpImport} />
           </>
         )}
       </div>
@@ -293,18 +403,12 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
         <table className="w-full text-left">
           <thead>
             <tr className="bg-white/5 border-b border-white/10">
-              <th
-                className="px-4 py-3 text-white/60 font-semibold text-sm cursor-pointer hover:text-gold transition-colors select-none"
-                onClick={() => toggleSort('number')}
-                style={{ fontFamily: '"Playfair Display", serif' }}
-              >
+              <th className="px-4 py-3 text-white/60 font-semibold text-sm cursor-pointer hover:text-gold transition-colors select-none"
+                onClick={() => toggleSort('number')} style={{ fontFamily: '"Playfair Display", serif' }}>
                 Nr. <SortArrow col="number" />
               </th>
-              <th
-                className="px-4 py-3 text-white/60 font-semibold text-sm cursor-pointer hover:text-gold transition-colors select-none"
-                onClick={() => toggleSort('name')}
-                style={{ fontFamily: '"Playfair Display", serif' }}
-              >
+              <th className="px-4 py-3 text-white/60 font-semibold text-sm cursor-pointer hover:text-gold transition-colors select-none"
+                onClick={() => toggleSort('name')} style={{ fontFamily: '"Playfair Display", serif' }}>
                 Tischname <SortArrow col="name" />
               </th>
               <th className="px-4 py-3 text-white/60 font-semibold text-sm" style={{ fontFamily: '"Playfair Display", serif' }}>
@@ -318,7 +422,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           <tbody>
             {sorted.map((table, idx) => {
               const isOpen = expanded.has(table.id);
-              const occupied = table.guests.filter(g => g.trim()).length;
+              const occupied = table.guests.filter(g => g.firstName.trim()).length;
               const isBT = table.id === 'bt';
 
               return (
@@ -327,20 +431,12 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                     className={`border-b border-white/5 hover:bg-white/4 transition-colors ${idx % 2 === 0 ? 'bg-white/2' : ''}`}
                     style={{ background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : undefined }}
                   >
-                    {/* Number */}
                     <td className="px-4 py-3">
-                      <span
-                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg font-bold text-sm"
-                        style={{
-                          background: isBT ? '#c9a84c' : '#d6d6d6',
-                          color: '#1e2a45',
-                          fontFamily: '"Playfair Display", serif',
-                        }}
-                      >
+                      <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg font-bold text-sm"
+                        style={{ background: isBT ? '#c9a84c' : '#d6d6d6', color: '#1e2a45', fontFamily: '"Playfair Display", serif' }}>
                         {String(table.number)}
                       </span>
                     </td>
-                    {/* Name */}
                     <td className="px-4 py-3">
                       <button
                         className={`text-white text-left transition-colors ${isEditMode ? 'hover:text-gold cursor-pointer' : 'cursor-default'}`}
@@ -350,13 +446,11 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                         {table.name || <span className="text-white/30 italic">Kein Name</span>}
                       </button>
                     </td>
-                    {/* Count */}
                     <td className="px-4 py-3">
                       <span style={{ color: occupied === table.size ? '#c9a84c' : 'rgba(255,255,255,0.7)' }}>
                         {occupied}/{table.size}
                       </span>
                     </td>
-                    {/* Expand toggle */}
                     <td className="px-4 py-3">
                       <button
                         onClick={() => toggleExpand(table.id)}
@@ -371,22 +465,43 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                     <tr>
                       <td colSpan={4} className="px-4 py-2 bg-white/3" style={{ background: 'rgba(255,255,255,0.03)' }}>
                         <ul className="grid grid-cols-2 md:grid-cols-3 gap-1 py-2">
-                          {table.guests.map((g, i) => (
-                            <li key={i} className="flex items-center gap-2 text-sm">
-                              <span
-                                className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold"
-                                style={{
-                                  background: g.trim() ? '#c9a84c' : 'rgba(255,255,255,0.1)',
-                                  color: g.trim() ? '#1e2a45' : 'rgba(255,255,255,0.3)',
-                                }}
-                              >
-                                {i + 1}
-                              </span>
-                              <span className={g.trim() ? 'text-white' : 'text-white/25 italic'}>
-                                {g.trim() || 'Frei'}
-                              </span>
-                            </li>
-                          ))}
+                          {table.guests.map((g, i) => {
+                            const fullName = guestFullName(g);
+                            const menuEntry = g.menu ? MENU_CHOICES.find(m => m.id === g.menu) : null;
+                            return (
+                              <li key={i} className="flex items-center gap-2 text-sm">
+                                <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold"
+                                  style={{
+                                    background: fullName ? '#c9a84c' : 'rgba(255,255,255,0.1)',
+                                    color: fullName ? '#1e2a45' : 'rgba(255,255,255,0.3)',
+                                  }}>
+                                  {i + 1}
+                                </span>
+                                <span className={fullName ? 'text-white' : 'text-white/25 italic'}>
+                                  {fullName || 'Frei'}
+                                </span>
+                                {menuEntry && (
+                                  <span className="text-[9px] font-bold px-1 rounded"
+                                    style={{ background: menuEntry.color, color: menuEntry.textColor }}>
+                                    {menuEntry.short}
+                                  </span>
+                                )}
+                                {g.tags.length > 0 && (
+                                  <span className="flex gap-0.5">
+                                    {g.tags.map(tagId => {
+                                      const tag = GUEST_TAGS.find(t => t.id === tagId);
+                                      return tag ? (
+                                        <span key={tagId} className="text-[9px] font-bold px-1 rounded"
+                                          style={{ background: tag.color, color: tag.textColor }}>
+                                          {tag.short}
+                                        </span>
+                                      ) : null;
+                                    })}
+                                  </span>
+                                )}
+                              </li>
+                            );
+                          })}
                         </ul>
                       </td>
                     </tr>

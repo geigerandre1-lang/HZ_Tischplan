@@ -81,7 +81,7 @@ function AppInner() {
 
   const handleTableRemove = (table: Table) => {
     if (!isEditMode) return;
-    const filledCount = table.guests.filter(g => g.trim()).length;
+    const filledCount = table.guests.filter(g => g.firstName.trim()).length;
     if (filledCount > 0) {
       setRemoveTarget(table);
     } else {
@@ -191,7 +191,7 @@ function AppInner() {
 
       {removeTarget && (
         <ConfirmDialog
-          message={`Dieser Tisch enthält ${removeTarget.guests.filter(g => g.trim()).length} eingetragene Gäste — wirklich entfernen?`}
+          message={`Dieser Tisch enthält ${removeTarget.guests.filter(g => g.firstName.trim()).length} eingetragene Gäste — wirklich entfernen?`}
           onConfirm={confirmRemove}
           onCancel={() => setRemoveTarget(null)}
         />
