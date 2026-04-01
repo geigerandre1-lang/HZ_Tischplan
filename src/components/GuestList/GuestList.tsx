@@ -248,89 +248,126 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
     setImportSuccess(null);
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Try UTF-8 first, then fall back to windows-1252 for Excel-exported CSVs
+    const tryParse = (text: string) => {
+      const normalized = text.replace(/^\uFEFF/, '');
+      const lines = normalized.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) throw new Error('Leere oder ungültige RSVP-Datei.');
+
+      const header = parseCSVLine(lines[0]).map(h => h.trim());
+      const headerLower = header.map(h => {
+        // Normalize umlauts so ü/Ü → u, ä/Ä → a, ö/Ö → o for robust matching
+        return h.toLowerCase()
+          .replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o')
+          .replace(/\u00fc/g, 'u').replace(/\u00e4/g, 'a').replace(/\u00f6/g, 'o');
+      });
+
+      const findCol = (...names: string[]) => {
+        for (const n of names) {
+          const needle = n.toLowerCase()
+            .replace(/ü/g, 'u').replace(/ä/g, 'a').replace(/ö/g, 'o');
+          const idx = headerLower.findIndex(h => h.includes(needle));
+          if (idx >= 0) return idx;
+        }
+        return -1;
+      };
+
+      const iFirst = findCol('first name', 'vorname', 'firstname');
+      const iLast  = findCol('last name', 'nachname', 'lastname');
+      const iRsvp  = findCol('rsvp');
+      let   iMenu  = findCol('menuauswahl', 'menauswahl', 'menu');
+
+      // Fallback: scan columns for Fleisch/Fisch/Vegetarisch values
+      if (iMenu === -1) {
+        const MENU_VALS = ['fleisch', 'fisch', 'vegetar'];
+        outer: for (let col = 0; col < header.length; col++) {
+          for (let row = 1; row < Math.min(lines.length, 10); row++) {
+            const cols = parseCSVLine(lines[row]);
+            const val = (cols[col] ?? '').trim().toLowerCase();
+            if (MENU_VALS.some(m => val.includes(m))) {
+              iMenu = col;
+              break outer;
+            }
+          }
+        }
+      }
+
+      if (iFirst === -1 || iLast === -1) {
+        throw new Error('RSVP-CSV benötigt Spalten für Vorname und Nachname (z.B. "First Name", "Last Name").');
+      }
+
+      interface RsvpGuest { firstName: string; lastName: string; menu?: MenuChoice }
+      const guests: RsvpGuest[] = [];
+      let skippedByRsvp = 0;
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const firstName = cols[iFirst]?.trim() ?? '';
+        const lastName  = cols[iLast]?.trim() ?? '';
+        if (!firstName && !lastName) continue;
+
+        // Filter by RSVP if column exists — keep if "attending" OR if column is empty
+        if (iRsvp >= 0) {
+          const rsvpVal = cols[iRsvp]?.trim().toLowerCase() ?? '';
+          if (rsvpVal !== '' && !rsvpVal.includes('attending')) {
+            skippedByRsvp++;
+            continue;
+          }
+        }
+
+        let menu: MenuChoice | undefined;
+        if (iMenu >= 0) {
+          const raw = (cols[iMenu] ?? '').trim().toLowerCase();
+          if (raw.includes('fleisch'))  menu = 'fleisch';
+          else if (raw.includes('fisch')) menu = 'fisch';
+          else if (raw.includes('vegetar')) menu = 'vegetarisch';
+        }
+
+        guests.push({ firstName, lastName, menu });
+      }
+
+      if (guests.length === 0) {
+        const hint = skippedByRsvp > 0 ? ` (${skippedByRsvp} Gäste wegen RSVP Status übersprungen)` : '';
+        throw new Error(`Keine gültigen Gäste gefunden.${hint}`);
+      }
+
+      // Build name → menu lookup (normalized)
+      const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+      const menuMap = new Map<string, MenuChoice | undefined>();
+      guests.forEach(g => menuMap.set(norm(`${g.firstName} ${g.lastName}`), g.menu));
+
+      // Apply menus to seated guests by name match
+      let updatedCount = 0;
+      let matchCount = 0;
+      allTables.forEach(table => {
+        const updatedGuests = table.guests.map(g => {
+          if (!g.firstName.trim()) return g;
+          const key = norm(`${g.firstName} ${g.lastName}`);
+          if (!menuMap.has(key)) return g;
+          matchCount++;
+          const menu = menuMap.get(key);
+          if (menu === g.menu) return g;
+          updatedCount++;
+          return { ...g, menu };
+        });
+        const changed = updatedGuests.some((g, i) => g.menu !== table.guests[i].menu);
+        if (changed) {
+          dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, name: table.name, size: table.size, guests: updatedGuests } });
+        }
+      });
+
+      const menuInfo = iMenu >= 0 ? `Menüspalte: "${header[iMenu]}"` : 'keine Menüspalte gefunden';
+      const preview = guests.slice(0, 4).map(g => `${g.firstName} ${g.lastName}`).join(', ');
+      const more = guests.length > 4 ? ` +${guests.length - 4} weitere` : '';
+      setImportSuccess(
+        `RSVP: ${guests.length} Gäste (${preview}${more}) · ${menuInfo} · ${matchCount} Namensübereinstimmungen · ${updatedCount} Menüs aktualisiert.`
+      );
+    };
+
     const reader = new FileReader();
     reader.onload = (ev) => {
       try {
-        const text = (ev.target?.result as string).replace(/^\uFEFF/, '');
-        const lines = text.split(/\r?\n/).filter(l => l.trim());
-        if (lines.length < 2) throw new Error('Leere oder ungültige RSVP-Datei.');
-
-        const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
-        // Find column indices flexibly
-        const findCol = (...names: string[]) => {
-          for (const n of names) {
-            const idx = header.findIndex(h => h.includes(n.toLowerCase()));
-            if (idx >= 0) return idx;
-          }
-          return -1;
-        };
-        const iFirst  = findCol('first name', 'vorname', 'firstname');
-        const iLast   = findCol('last name', 'nachname', 'lastname');
-        const iRsvp   = findCol('rsvp');
-        const iMenu   = findCol('menüauswahl', 'menuauswahl', 'menu');
-
-        if (iFirst === -1 || iLast === -1) {
-          throw new Error('RSVP-CSV benötigt Spalten für Vorname und Nachname (z.B. "First Name", "Last Name").');
-        }
-
-        interface RsvpGuest { firstName: string; lastName: string; menu?: MenuChoice }
-        const guests: RsvpGuest[] = [];
-        for (let i = 1; i < lines.length; i++) {
-          const cols = parseCSVLine(lines[i]);
-          const firstName = cols[iFirst]?.trim() ?? '';
-          const lastName  = cols[iLast]?.trim() ?? '';
-          if (!firstName && !lastName) continue;
-
-          // Filter by RSVP if column exists
-          if (iRsvp >= 0) {
-            const rsvpVal = cols[iRsvp]?.trim().toLowerCase() ?? '';
-            if (!rsvpVal.includes('attending') && rsvpVal !== '') continue;
-          }
-
-          let menu: MenuChoice | undefined;
-          if (iMenu >= 0) {
-            const raw = cols[iMenu]?.trim().toLowerCase() ?? '';
-            if (raw.includes('fleisch')) menu = 'fleisch';
-            else if (raw.includes('fisch')) menu = 'fisch';
-            else if (raw.includes('vegetar')) menu = 'vegetarisch';
-          }
-
-          guests.push({ firstName, lastName, menu });
-        }
-
-        if (guests.length === 0) {
-          throw new Error('Keine Gäste mit RSVP "Attending" gefunden.');
-        }
-
-        // Build name → menu lookup (normalized lowercase)
-        const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-        const menuMap = new Map<string, MenuChoice | undefined>();
-        guests.forEach(g => {
-          const key = normalize(`${g.firstName} ${g.lastName}`);
-          menuMap.set(key, g.menu);
-        });
-
-        // Apply menus to seated guests by name match, dispatch UPDATE_TABLE per affected table
-        let updatedCount = 0;
-        allTables.forEach(table => {
-          const updatedGuests = table.guests.map(g => {
-            const key = normalize(`${g.firstName} ${g.lastName}`);
-            if (!g.firstName.trim()) return g;
-            if (!menuMap.has(key)) return g;
-            const menu = menuMap.get(key);
-            if (menu === g.menu) return g;
-            updatedCount++;
-            return { ...g, menu };
-          });
-          const changed = updatedGuests.some((g, i) => g.menu !== table.guests[i].menu);
-          if (changed) {
-            dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, name: table.name, size: table.size, guests: updatedGuests } });
-          }
-        });
-
-        const preview = guests.slice(0, 5).map(g => `${g.firstName} ${g.lastName}`).join(', ');
-        const more = guests.length > 5 ? ` (+${guests.length - 5} weitere)` : '';
-        setImportSuccess(`RSVP geladen: ${guests.length} Gäste (${preview}${more}) — ${updatedCount} Menüzuweisungen aktualisiert.`);
+        tryParse(ev.target?.result as string);
       } catch (err) {
         setImportError(err instanceof Error ? err.message : 'Unbekannter Fehler.');
       } finally {
