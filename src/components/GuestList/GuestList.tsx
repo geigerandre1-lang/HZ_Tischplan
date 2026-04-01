@@ -7,7 +7,7 @@ type SortKey = 'number' | 'name';
 type SortDir = 'asc' | 'desc';
 
 export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }) {
-  const { allTables, dispatch } = useFloorPlan();
+  const { allTables, dispatch, isEditMode } = useFloorPlan();
   const [sortKey, setSortKey] = useState<SortKey>('number');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [search, setSearch] = useState('');
@@ -230,16 +230,20 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
         <button onClick={exportCSV} className="btn-gold flex items-center gap-2">
           <Download size={14} /> CSV Export
         </button>
-        <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2">
-          <Upload size={14} /> CSV Import
-        </button>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".csv,text/csv"
-          className="hidden"
-          onChange={handleImport}
-        />
+        {isEditMode && (
+          <>
+            <button onClick={() => fileInputRef.current?.click()} className="btn-ghost flex items-center gap-2">
+              <Upload size={14} /> CSV Import
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="hidden"
+              onChange={handleImport}
+            />
+          </>
+        )}
       </div>
       {importError && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-red-900/40 border border-red-500/40 text-red-300 text-sm">
@@ -264,7 +268,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                 <div
                   key={i}
                   className="flex items-center justify-between hover:bg-white/5 rounded px-2 py-1 cursor-pointer"
-                  onClick={() => onTableClick(r.table)}
+                  onClick={() => isEditMode && onTableClick(r.table)}
                 >
                   <span className="text-white font-medium">{r.guestName}</span>
                   <span className="text-white/50 text-sm">
@@ -339,8 +343,9 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                     {/* Name */}
                     <td className="px-4 py-3">
                       <button
-                        className="text-white hover:text-gold transition-colors text-left"
-                        onClick={() => onTableClick(table)}
+                        className={`text-white text-left transition-colors ${isEditMode ? 'hover:text-gold cursor-pointer' : 'cursor-default'}`}
+                        onClick={() => isEditMode && onTableClick(table)}
+                        disabled={!isEditMode}
                       >
                         {table.name || <span className="text-white/30 italic">Kein Name</span>}
                       </button>

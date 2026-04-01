@@ -13,9 +13,10 @@ interface AddTableButtonProps {
 }
 
 export function AddTableButton({ zone, side, position, x, y, width }: AddTableButtonProps) {
-  const { dispatch, canAddTable } = useFloorPlan();
+  const { dispatch, canAddTable, isEditMode } = useFloorPlan();
   const [showPicker, setShowPicker] = useState(false);
 
+  if (!isEditMode) return null;
   if (!canAddTable(zone, side, position)) return null;
 
   const handleAdd = (size: TableSize) => {

@@ -1,0 +1,5 @@
+# Direktzugriff auf die Datendatei verhindern
+<Files "tischplan_data.json">
+    Order allow,deny
+    Deny from all
+</Files>

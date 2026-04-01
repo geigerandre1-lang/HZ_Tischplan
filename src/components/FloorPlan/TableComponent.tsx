@@ -1,5 +1,6 @@
 import React from 'react';
 import { Table } from '../../types';
+import { useFloorPlan } from '../../context/FloorPlanContext';
 
 interface TableComponentProps {
   table: Table;
@@ -260,6 +261,7 @@ export function TableComponent({
   onRemove,
 }: TableComponentProps) {
   const isBT = table.id === 'bt';
+  const { isEditMode } = useFloorPlan();
   const occupiedCount = table.guests.filter(g => g.trim().length > 0).length;
 
   // label chars for number display
@@ -345,8 +347,8 @@ export function TableComponent({
         onClick={() => onClick(table)}
       />
 
-      {/* Remove button (not for BT) */}
-      {!isBT && (
+      {/* Remove button (not for BT, only in edit mode) */}
+      {!isBT && isEditMode && (
         <g
           style={{ cursor: 'pointer' }}
           onClick={(e) => { e.stopPropagation(); onRemove(table); }}

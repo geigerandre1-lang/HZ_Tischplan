@@ -64,7 +64,7 @@ function ColContent({
   onTableClick: (t: Table) => void;
   onTableRemove: (t: Table) => void;
 }) {
-  const { getTablesBySide, nextPosition } = useFloorPlan();
+  const { getTablesBySide, nextPosition, isEditMode } = useFloorPlan();
   const tables   = getTablesBySide(zoneId, side);
   const topTable = tables.find(t => t.position === 'top');
   const botTable = tables.find(t => t.position === 'bottom');
@@ -87,6 +87,37 @@ function ColContent({
         onClick={onTableClick}
         onRemove={onTableRemove}
       />
+    );
+  }
+
+  // In view mode: center each table vertically within its own share of the column
+  if (!isEditMode) {
+    const count = tables.length;
+    if (count === 0) return null;
+    if (count === 1) {
+      // single table centered in full column height
+      const t = tables[0];
+      const { w: tW, h: tH } = tableDims(t.size);
+      return (
+        <TableComponent
+          key={t.id}
+          table={t}
+          x={colX + (colW - tW) / 2}
+          y={zoneY + CHAIR_OUTER + (zoneH - CHAIR_OUTER * 2 - tH) / 2}
+          tableW={tW}
+          tableH={tH}
+          isVertical
+          onClick={onTableClick}
+          onRemove={onTableRemove}
+        />
+      );
+    }
+    // two tables: each centered in its half
+    return (
+      <>
+        {topTable && renderTable(topTable, zoneY + CHAIR_OUTER, halfH - CHAIR_OUTER * 2)}
+        {botTable && renderTable(botTable, zoneY + halfH + CHAIR_OUTER, halfH - CHAIR_OUTER * 2)}
+      </>
     );
   }
 
@@ -136,15 +167,17 @@ function BtColumn({
   onTableClick: (t: Table) => void;
   onTableRemove: (t: Table) => void;
 }) {
-  const { getTablesBySide, dispatch } = useFloorPlan();
+  const { getTablesBySide, isEditMode } = useFloorPlan();
   const leftTables = getTablesBySide(1, 'left');
   const btTable    = leftTables.find(t => t.id === 'bt');
   const extraTable = leftTables.find(t => t.id !== 'bt');
   const halfH = zoneH / 2;
 
-  // BT occupies upper half
+  // In view mode: center BT in full column height if no extra table
   const btX = colX + (colW - BT_W) / 2;
-  const btY = zoneY + (halfH - BT_H) / 2;
+  const btY = (!isEditMode && !extraTable)
+    ? zoneY + (zoneH - BT_H) / 2
+    : zoneY + (halfH - BT_H) / 2;
 
   // Extra table in lower half
   const renderExtra = () => {

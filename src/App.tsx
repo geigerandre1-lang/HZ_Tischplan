@@ -1,11 +1,61 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FloorPlanProvider, useFloorPlan } from './context/FloorPlanContext';
 import { FloorPlan } from './components/FloorPlan/FloorPlan';
 import { TableModal } from './components/TableModal/TableModal';
 import { GuestList } from './components/GuestList/GuestList';
 import { Table } from './types';
 
+const EDIT_PASSWORD = 'Hochzeit2026';
+
 type Tab = 'floorplan' | 'guestlist';
+
+function PasswordModal({ onSuccess, onCancel }: { onSuccess: () => void; onCancel: () => void }) {
+  const [pw, setPw] = useState('');
+  const [error, setError] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pw === EDIT_PASSWORD) {
+      onSuccess();
+    } else {
+      setError(true);
+      setPw('');
+      setTimeout(() => inputRef.current?.focus(), 0);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div
+        className="bg-[#1e2a45] border border-white/20 rounded-xl shadow-2xl p-6 max-w-xs w-full mx-4"
+        style={{ fontFamily: '"Cormorant Garamond", serif' }}
+      >
+        <h2 className="text-white text-xl font-semibold mb-1" style={{ fontFamily: '"Playfair Display", serif' }}>🔐 Bearbeiten</h2>
+        <p className="text-white/50 text-sm mb-4">Passwort eingeben um den Bearbeitungsmodus zu aktivieren.</p>
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <input
+            ref={inputRef}
+            autoFocus
+            type="password"
+            value={pw}
+            onChange={e => { setPw(e.target.value); setError(false); }}
+            placeholder="Passwort"
+            className={`w-full bg-white/10 border rounded-lg px-3 py-2 text-white placeholder:text-white/30 focus:outline-none text-base ${
+              error ? 'border-red-400 focus:border-red-400' : 'border-white/20 focus:border-gold'
+            }`}
+            style={{ fontFamily: '"Cormorant Garamond", serif' }}
+          />
+          {error && <p className="text-red-400 text-sm">Falsches Passwort</p>}
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onCancel} className="btn-ghost">Abbrechen</button>
+            <button type="submit" className="btn-gold">Entsperren</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
 
 function ConfirmDialog({ message, onConfirm, onCancel }: { message: string; onConfirm: () => void; onCancel: () => void }) {
   return (
@@ -26,9 +76,11 @@ function AppInner() {
   const [selectedTable, setSelectedTable] = useState<Table | null>(null);
   const [removeTarget, setRemoveTarget] = useState<Table | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
-  const { dispatch } = useFloorPlan();
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const { dispatch, isEditMode, setEditMode } = useFloorPlan();
 
   const handleTableRemove = (table: Table) => {
+    if (!isEditMode) return;
     const filledCount = table.guests.filter(g => g.trim()).length;
     if (filledCount > 0) {
       setRemoveTarget(table);
@@ -49,6 +101,11 @@ function AppInner() {
     setShowResetConfirm(false);
   };
 
+  const handleTableClick = (table: Table) => {
+    if (!isEditMode) return;
+    setSelectedTable(table);
+  };
+
   return (
     <div className="min-h-screen flex flex-col" style={{ background: '#1e2a45' }}>
       {/* Header */}
@@ -61,6 +118,19 @@ function AppInner() {
         </div>
 
         <div className="flex items-center gap-2 md:gap-3">
+          {/* Edit mode toggle */}
+          <button
+            onClick={() => isEditMode ? setEditMode(false) : setShowPasswordModal(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm font-semibold transition-colors ${
+              isEditMode
+                ? 'bg-gold/20 border-gold text-gold hover:bg-gold/30'
+                : 'bg-white/5 border-white/20 text-white/60 hover:bg-white/10 hover:text-white'
+            }`}
+            title={isEditMode ? 'Bearbeitungsmodus beenden' : 'Bearbeitungsmodus aktivieren'}
+          >
+            {isEditMode ? '🔓 Bearbeiten' : '🔒 Ansicht'}
+          </button>
+
           {/* Tabs */}
           <div className="flex rounded-lg overflow-hidden border border-white/15">
             <button
@@ -77,12 +147,14 @@ function AppInner() {
             </button>
           </div>
 
-          <button
-            onClick={() => setShowResetConfirm(true)}
-            className="btn-danger hidden md:inline-flex items-center gap-1 text-xs"
-          >
-            ↺ Zurücksetzen
-          </button>
+          {isEditMode && (
+            <button
+              onClick={() => setShowResetConfirm(true)}
+              className="btn-danger hidden md:inline-flex items-center gap-1 text-xs"
+            >
+              ↺ Zurücksetzen
+            </button>
+          )}
         </div>
       </header>
 
@@ -91,7 +163,7 @@ function AppInner() {
         {tab === 'floorplan' ? (
           <div style={{ height: 'calc(100vh - 73px)' }}>
             <FloorPlan
-              onTableClick={setSelectedTable}
+              onTableClick={handleTableClick}
               onTableRemove={handleTableRemove}
             />
           </div>
@@ -103,6 +175,13 @@ function AppInner() {
       </main>
 
       {/* Modals */}
+      {showPasswordModal && (
+        <PasswordModal
+          onSuccess={() => { setEditMode(true); setShowPasswordModal(false); }}
+          onCancel={() => setShowPasswordModal(false)}
+        />
+      )}
+
       {selectedTable && (
         <TableModal
           table={selectedTable}

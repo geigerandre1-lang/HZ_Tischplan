@@ -4,6 +4,7 @@ import React, {
   useReducer,
   useEffect,
   useCallback,
+  useRef,
 } from 'react';
 import { AppState, Action, Zone, ZoneId, Side, Position, TableSize, Table, TableNumber } from '../types';
 
@@ -143,38 +144,90 @@ interface FloorPlanContextValue {
   getTablesBySide: (zone: ZoneId, side: Side) => Table[];
   canAddTable: (zone: ZoneId, side: Side, nextPosition: Position) => boolean;
   nextPosition: (zone: ZoneId, side: Side) => Position | null;
+  isEditMode: boolean;
+  setEditMode: (v: boolean) => void;
 }
 
 const FloorPlanContext = createContext<FloorPlanContextValue | null>(null);
 
 const STORAGE_KEY = 'hochzeit-tischplan-v2';
 
-export function FloorPlanProvider({ children }: { children: React.ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, INITIAL_STATE, (initial) => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return initial;
-      const parsed = JSON.parse(raw) as AppState;
-      // ensure BT always exists in zone 1
-      const zone1 = parsed.zones.find(z => z.id === 1);
-      if (zone1 && !zone1.tables.find(t => t.id === 'bt')) {
-        zone1.tables = [makeBT(), ...zone1.tables];
-      }
-      // fix stale BT size/guests if migrated from older version
-      const bt = zone1?.tables.find(t => t.id === 'bt');
-      if (bt && bt.size !== 6) {
-        bt.size = 6;
-        bt.guests = Array(6).fill('').map((_, i) => bt.guests[i] ?? '');
-      }
-      return parsed;
-    } catch {
-      return initial;
-    }
-  });
+// ─── Migrations ────────────────────────────────────────────────────────────────
+function migrate(parsed: AppState): AppState {
+  const zone1 = parsed.zones.find(z => z.id === 1);
+  if (zone1 && !zone1.tables.find(t => t.id === 'bt')) {
+    zone1.tables = [makeBT(), ...zone1.tables];
+  }
+  const bt = zone1?.tables.find(t => t.id === 'bt');
+  if (bt && bt.size !== 6) {
+    bt.size = 6;
+    bt.guests = Array(6).fill('').map((_, i) => bt.guests[i] ?? '');
+  }
+  return parsed;
+}
 
+// ─── Server persistence ────────────────────────────────────────────────────────
+// Development (npm run dev): localStorage als Fallback.
+// Production-Build:          /api.php auf dem Server.
+const USE_API = !import.meta.env.DEV;
+const API_URL = '/api.php';
+const WRITE_TOKEN: string = (import.meta.env.VITE_WRITE_TOKEN as string) ?? '';
+
+async function loadFromServer(): Promise<AppState | null> {
+  if (USE_API) {
+    try {
+      const res = await fetch(API_URL, { cache: 'no-store' });
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim() !== 'null') {
+          return migrate(JSON.parse(text) as AppState);
+        }
+      }
+    } catch { /* fall through to localStorage */ }
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    return migrate(JSON.parse(raw) as AppState);
+  } catch {
+    return null;
+  }
+}
+
+async function saveToServer(state: AppState): Promise<void> {
+  const json = JSON.stringify(state);
+  if (USE_API) {
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (WRITE_TOKEN) headers['X-Write-Token'] = WRITE_TOKEN;
+      await fetch(API_URL, { method: 'POST', headers, body: json });
+      return;
+    } catch { /* fall through to localStorage */ }
+  }
+  localStorage.setItem(STORAGE_KEY, json);
+}
+
+export function FloorPlanProvider({ children }: { children: React.ReactNode }) {
+  const [isEditMode, setEditMode] = React.useState(false);
+  const [state, dispatch] = useReducer(reducer, INITIAL_STATE);
+  const [hydrated, setHydrated] = React.useState(false);
+  const saveTimer = useRef<number>();
+
+  // State vom Server (oder localStorage in dev) beim Start laden
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
+    loadFromServer().then(saved => {
+      if (saved) dispatch({ type: 'LOAD_STATE', payload: saved });
+      setHydrated(true);
+    });
+  }, []);
+
+  // State nach jeder Änderung speichern (debounced 600ms, erst nach dem Laden)
+  useEffect(() => {
+    if (!hydrated) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => saveToServer(state), 600);
+    return () => clearTimeout(saveTimer.current);
+  }, [state, hydrated]);
 
   const allTables = state.zones.flatMap(z => z.tables);
 
@@ -207,8 +260,18 @@ export function FloorPlanProvider({ children }: { children: React.ReactNode }) {
     return true;
   }, [getTablesBySide]);
 
+  if (!hydrated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ background: '#1e2a45' }}>
+        <p style={{ color: '#c9a84c', fontFamily: '"Playfair Display", serif', fontSize: '1.5rem' }}>
+          💍 Lade Tischplan…
+        </p>
+      </div>
+    );
+  }
+
   return (
-    <FloorPlanContext.Provider value={{ state, dispatch, allTables, getZone, getTablesBySide, canAddTable, nextPosition }}>
+    <FloorPlanContext.Provider value={{ state, dispatch, allTables, getZone, getTablesBySide, canAddTable, nextPosition, isEditMode, setEditMode }}>
       {children}
     </FloorPlanContext.Provider>
   );
