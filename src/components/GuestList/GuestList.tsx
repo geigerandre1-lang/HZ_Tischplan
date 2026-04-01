@@ -302,10 +302,35 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           throw new Error('Keine Gäste mit RSVP "Attending" gefunden.');
         }
 
-        // Show summary only — RSVP data is for reference, seating assignment done via TableModal
+        // Build name → menu lookup (normalized lowercase)
+        const normalize = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
+        const menuMap = new Map<string, MenuChoice | undefined>();
+        guests.forEach(g => {
+          const key = normalize(`${g.firstName} ${g.lastName}`);
+          menuMap.set(key, g.menu);
+        });
+
+        // Apply menus to seated guests by name match, dispatch UPDATE_TABLE per affected table
+        let updatedCount = 0;
+        allTables.forEach(table => {
+          const updatedGuests = table.guests.map(g => {
+            const key = normalize(`${g.firstName} ${g.lastName}`);
+            if (!g.firstName.trim()) return g;
+            if (!menuMap.has(key)) return g;
+            const menu = menuMap.get(key);
+            if (menu === g.menu) return g;
+            updatedCount++;
+            return { ...g, menu };
+          });
+          const changed = updatedGuests.some((g, i) => g.menu !== table.guests[i].menu);
+          if (changed) {
+            dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, name: table.name, size: table.size, guests: updatedGuests } });
+          }
+        });
+
         const preview = guests.slice(0, 5).map(g => `${g.firstName} ${g.lastName}`).join(', ');
         const more = guests.length > 5 ? ` (+${guests.length - 5} weitere)` : '';
-        setImportSuccess(`RSVP geladen: ${guests.length} Gäste — ${preview}${more}.`);
+        setImportSuccess(`RSVP geladen: ${guests.length} Gäste (${preview}${more}) — ${updatedCount} Menüzuweisungen aktualisiert.`);
       } catch (err) {
         setImportError(err instanceof Error ? err.message : 'Unbekannter Fehler.');
       } finally {
