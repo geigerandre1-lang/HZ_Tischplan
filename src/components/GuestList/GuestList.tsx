@@ -27,6 +27,11 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
   const guestFullName = (g: GuestInfo) => `${g.firstName} ${g.lastName}`.trim();
   const rsvpLabel = (status: RsvpStatus | undefined) =>
     RSVP_STATUSES.find(s => s.id === (status ?? 'no-entry'))?.label ?? 'Keine Rückmeldung';
+  const rsvpExportValue = (status: RsvpStatus | undefined) => {
+    if ((status ?? 'no-entry') === 'attending') return 'Attending';
+    if ((status ?? 'no-entry') === 'not-attending') return 'Regret';
+    return 'No Response';
+  };
 
   const sorted = useMemo(() => {
     return [...allTables].sort((a, b) => {
@@ -76,10 +81,11 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
 
   // ── CSV Export ────────────────────────────────────────────────────────────
   const exportCSV = () => {
-    const rows = [['Tischnummer', 'Tischname', 'Tischgroesse', 'Zone', 'Seite', 'Position', 'Sitzplatz', 'Vorname', 'Nachname', 'Menu', 'Tags']];
+    const rows = [['Tischnummer', 'Tischname', 'Tischgroesse', 'Zone', 'Seite', 'Position', 'Sitzplatz', 'Vorname', 'Nachname', 'Menu', 'RSVP', 'Tags']];
     sorted.forEach(t => {
       t.guests.forEach((g, i) => {
         const menuEntry = g.menu ? (MENU_CHOICES.find(m => m.id === g.menu)?.label ?? '') : '';
+        const rsvpEntry = rsvpExportValue(g.rsvpStatus);
         rows.push([
           String(t.number),
           t.name,
@@ -91,6 +97,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           g.firstName,
           g.lastName,
           menuEntry,
+          rsvpEntry,
           g.tags.map(id => GUEST_TAGS.find(tg => tg.id === id)?.short ?? id).join(','),
         ]);
       });
@@ -151,6 +158,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
         const iNachname = col('nachname');
         const iGast     = col('gast');
         const iMenu   = col('menu');
+        const iRsvp   = col('rsvp');
         const iTags   = col('tags');
 
         if ([iNum, iName, iSize, iZone, iSide, iPos, iSeat].some(x => x === -1)) {
@@ -191,6 +199,14 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
             else if (raw === 'vegetarisch') menu = 'vegetarisch';
           }
 
+          let rsvpStatus: RsvpStatus = 'no-entry';
+          if (iRsvp >= 0) {
+            const raw = cols[iRsvp]?.trim().toLowerCase() ?? '';
+            if (raw === 'zugesagt' || raw === 'attending') rsvpStatus = 'attending';
+            else if (raw === 'abgesagt' || raw === 'regret' || raw === 'not-attending') rsvpStatus = 'not-attending';
+            else if (raw === 'keine rückmeldung' || raw === 'keine ruckmeldung' || raw === 'no response' || raw === 'no-entry' || raw === '') rsvpStatus = 'no-entry';
+          }
+
           const tagsRaw = iTags >= 0 ? (cols[iTags]?.trim() ?? '') : '';
           const tags: GuestTag[] = tagsRaw
             ? tagsRaw.split(',').map(s => s.trim()).filter(s => GUEST_TAGS.some(t => t.short === s)).map(s => GUEST_TAGS.find(t => t.short === s)!.id)
@@ -199,7 +215,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           if (!tableMap.has(num)) {
             tableMap.set(num, { num, name, size, zone, side, pos, guests: new Map() });
           }
-          tableMap.get(num)!.guests.set(seat, { firstName, lastName, tags, menu });
+          tableMap.get(num)!.guests.set(seat, { firstName, lastName, tags, menu, rsvpStatus });
         }
 
         const VALID_SIZES: TableSize[] = [6, 8, 10];
@@ -212,7 +228,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           const tableSide: Side = side === 'right' ? 'right' : 'left';
           const tablePos: Position = pos === 'bottom' ? 'bottom' : 'top';
           const isBT = num === 'BT';
-          const guestsArr: GuestInfo[] = Array(tableSize).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] }));
+          const guestsArr: GuestInfo[] = Array(tableSize).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [], rsvpStatus: 'no-entry' }));
           guests.forEach((g, seat) => {
             if (seat >= 1 && seat <= tableSize) guestsArr[seat - 1] = g;
           });
@@ -235,7 +251,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
         if (!zone1.tables.find(t => t.id === 'bt')) {
           zone1.tables.unshift({
             id: 'bt', number: 'BT', name: 'Brauttisch', size: 6, zone: 1, side: 'left', position: 'top',
-            guests: Array(6).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [] })),
+            guests: Array(6).fill(null).map((): GuestInfo => ({ firstName: '', lastName: '', tags: [], rsvpStatus: 'no-entry' })),
           });
         }
 

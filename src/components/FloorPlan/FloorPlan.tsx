@@ -1,5 +1,5 @@
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Table } from '../../types';
+import { Table, MENU_CHOICES, RSVP_STATUSES, GUEST_TAGS } from '../../types';
 import { ZoneSvg, ZONE_W, AISLE_W, ZONE_H } from './Zone';
 import { ZoneId } from '../../types';
 import { useFloorPlan } from '../../context/FloorPlanContext';
@@ -8,9 +8,24 @@ import { useFloorPlan } from '../../context/FloorPlanContext';
 const OUTER_AISLE_W = 36;
 // SVG padding
 const PAD_X = 60;
-const PAD_Y = 40;
+const PAD_Y = 150;
 
 const ZONE_IDS: ZoneId[] = [1, 2, 3, 4];
+const LEGEND_CHAIR_W = 24;
+const LEGEND_CHAIR_H = 14;
+const LEGEND_TAG_IDS = ['veggie', 'gluten', 'milch', 'rollstuhl', 'kind'] as const;
+
+function legendChairFill(statusId: string): string {
+  if (statusId === 'not-attending') return 'rgba(75,75,85,0.50)';
+  if (statusId === 'no-entry') return 'url(#rsvpHatch)';
+  return '#c9a84c';
+}
+
+function legendChairStroke(statusId: string): string {
+  if (statusId === 'not-attending') return 'rgba(120,120,130,0.55)';
+  if (statusId === 'no-entry') return 'rgba(150,150,160,0.45)';
+  return '#e8c97a';
+}
 
 // Compute x position of each zone's left edge
 function zoneX(id: ZoneId): number {
@@ -143,6 +158,116 @@ export function FloorPlan({ onTableClick, onTableRemove }: FloorPlanProps) {
         <g transform={`translate(${transform.tx}, ${transform.ty}) scale(${transform.scale})`}>
           {/* Hall background */}
           <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="#1e2a45" />
+
+          {/* Legend */}
+          <g transform={`translate(${SVG_W / 2 - 250}, 10)`}>
+            <rect
+              x={0}
+              y={0}
+              width={500}
+              height={112}
+              rx={12}
+              fill="rgba(255,255,255,0.04)"
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth={1}
+            />
+            <text
+              x={12}
+              y={16}
+              fill="rgba(255,255,255,0.72)"
+              fontSize={11}
+              fontFamily="Cormorant Garamond, serif"
+              letterSpacing={1.4}
+            >
+              LEGENDE
+            </text>
+            <text x={136} y={16} textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize={9} fontFamily="Cormorant Garamond, serif">Ohne Menü</text>
+            <text x={226} y={16} textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize={9} fontFamily="Cormorant Garamond, serif">M</text>
+            <text x={316} y={16} textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize={9} fontFamily="Cormorant Garamond, serif">Fi</text>
+            <text x={406} y={16} textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize={9} fontFamily="Cormorant Garamond, serif">Vg</text>
+
+            {RSVP_STATUSES.map((status, rowIdx) => {
+              const rowY = 28 + rowIdx * 20;
+              return (
+                <g key={status.id}>
+                  <text
+                    x={12}
+                    y={rowY + 13}
+                    fill="rgba(255,255,255,0.7)"
+                    fontSize={9}
+                    fontFamily="Cormorant Garamond, serif"
+                  >
+                    {status.label}
+                  </text>
+                  {[null, ...MENU_CHOICES].map((menu, colIdx) => {
+                    const cx = 124 + colIdx * 90;
+                    return (
+                      <g key={`${status.id}-${menu?.id ?? 'none'}`}>
+                        <rect
+                          x={cx}
+                          y={rowY}
+                          width={LEGEND_CHAIR_W}
+                          height={LEGEND_CHAIR_H}
+                          rx={LEGEND_CHAIR_H / 2}
+                          fill={legendChairFill(status.id)}
+                          stroke={legendChairStroke(status.id)}
+                          strokeWidth={1}
+                        />
+                        {menu && (
+                          <circle
+                            cx={cx + LEGEND_CHAIR_W - 3}
+                            cy={rowY + 3}
+                            r={2.5}
+                            fill={menu.color}
+                          />
+                        )}
+                      </g>
+                    );
+                  })}
+                </g>
+              );
+            })}
+
+            <text
+              x={12}
+              y={103}
+              fill="rgba(255,255,255,0.62)"
+              fontSize={9}
+              fontFamily="Cormorant Garamond, serif"
+            >
+              Besonderheiten
+            </text>
+            {LEGEND_TAG_IDS.map((tagId, idx) => {
+              const tag = GUEST_TAGS.find(t => t.id === tagId);
+              if (!tag) return null;
+              const x = 108 + idx * 76;
+              return (
+                <g key={tag.id}>
+                  <rect
+                    x={x}
+                    y={92}
+                    width={66}
+                    height={14}
+                    rx={7}
+                    fill={tag.color}
+                    stroke="rgba(255,255,255,0.15)"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={x + 33}
+                    y={101.7}
+                    textAnchor="middle"
+                    fill={tag.textColor}
+                    fontSize={8}
+                    fontFamily="Cormorant Garamond, serif"
+                    letterSpacing={0.4}
+                  >
+                    {tag.short} {tag.label}
+                  </text>
+                </g>
+              );
+            })}
+          </g>
 
           {/* Floor area */}
           <rect

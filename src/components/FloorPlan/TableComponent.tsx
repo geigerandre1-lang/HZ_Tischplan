@@ -83,9 +83,17 @@ function Chairs({
     if (st === 'no-entry') return NE_TEXT;
     return '#e8c97a';
   };
+  const tagShort = (id: string): string => {
+    if (id === 'veggie') return 'VG';
+    if (id === 'rollstuhl') return 'RS';
+    if (id === 'milch') return 'MI';
+    if (id === 'gluten') return 'GL';
+    if (id === 'kind') return 'K';
+    return GUEST_TAGS.find(t => t.id === id)?.short ?? id;
+  };
   const tagLabel = (g: GuestInfo | undefined): string => {
     if (!g || g.tags.length === 0) return '';
-    return '(' + g.tags.map(id => GUEST_TAGS.find(t => t.id === id)?.short ?? id).join(',') + ')';
+    return g.tags.map(id => tagShort(id)).join('/');
   };
   const menuColor = (g: GuestInfo | undefined): string | null => {
     if (!g?.menu) return null;
