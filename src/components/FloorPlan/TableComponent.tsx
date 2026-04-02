@@ -220,13 +220,6 @@ function Chairs({
               )}
             </>
           ) : (
-                  style={{ pointerEvents: 'none' }}
-                >
-                  {tagLabel(guestB)}
-                </text>
-              )}
-            </>
-          ) : (
             <text
               x={cx + CHAIR_W / 2}
               y={chairYB + CHAIR_H / 2 + 2.5}
