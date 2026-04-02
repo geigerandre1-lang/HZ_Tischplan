@@ -46,8 +46,15 @@ function Chairs({
   const chairsTop: JSX.Element[] = [];
   const chairsBottom: JSX.Element[] = [];
 
-  const trunc = (s: string) => s.length > 9 ? s.slice(0, 8) + '…' : s;
+  const trunc = (s: string) => s.length > 10 ? s.slice(0, 9) + '\u2026' : s;
   const displayName = (g: GuestInfo | undefined) => g ? trunc(guestDisplayName(g, showFullName)) : '';
+  // Split into two lines: firstName on top, lastName (only when showFullName) below
+  const displayLines = (g: GuestInfo | undefined): [string, string] => {
+    if (!g) return ['', ''];
+    const first = trunc(g.firstName);
+    const last  = showFullName ? trunc(g.lastName) : '';
+    return [first, last];
+  };
   const guestFill = (g: GuestInfo | undefined): string => {
     if (!g || !g.firstName.trim()) return EMPTY_COLOR;
     if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? OCCUPIED_COLOR;
@@ -78,6 +85,7 @@ function Chairs({
       const guestName = guest?.firstName.trim() ?? '';
       const chairY = tableY - CHAIR_H - 4;
       const seatNumTop = seatOffset + i + 1;
+      const [line1, line2] = displayLines(guest);
       // top chair
       chairsTop.push(
         <g key={`top-${i}`}>
@@ -98,19 +106,32 @@ function Chairs({
             <>
               <text
                 x={cx + CHAIR_W / 2}
-                y={chairY - 2}
+                y={chairY - (line2 ? 8 : 2)}
                 textAnchor="middle"
                 fill="#e8c97a"
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
               >
-                {displayName(guest)}
+                {line1}
               </text>
+              {line2 && (
+                <text
+                  x={cx + CHAIR_W / 2}
+                  y={chairY - 1}
+                  textAnchor="middle"
+                  fill="#e8c97a"
+                  fontSize={6}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {line2}
+                </text>
+              )}
               {tagLabel(guest) && (
                 <text
                   x={cx + CHAIR_W / 2}
-                  y={chairY - 9}
+                  y={chairY - (line2 ? 16 : 9)}
                   textAnchor="middle"
                   fill="#e8c97a"
                   fontSize={5}
@@ -142,6 +163,7 @@ function Chairs({
       const guestNameB = guestB?.firstName.trim() ?? '';
       const chairYB = tableY + tableH + 4;
       const seatNumBot = seatOffset + half + i + 1;
+      const [line1B, line2B] = displayLines(guestB);
       chairsBottom.push(
         <g key={`bot-${i}`}>
           <rect
@@ -168,16 +190,36 @@ function Chairs({
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
               >
-                {displayName(guestB)}
+                {line1B}
               </text>
+              {line2B && (
+                <text
+                  x={cx + CHAIR_W / 2}
+                  y={chairYB + CHAIR_H + 15}
+                  textAnchor="middle"
+                  fill="#e8c97a"
+                  fontSize={6}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {line2B}
+                </text>
+              )}
               {tagLabel(guestB) && (
                 <text
                   x={cx + CHAIR_W / 2}
-                  y={chairYB + CHAIR_H + 14}
+                  y={chairYB + CHAIR_H + (line2B ? 22 : 14)}
                   textAnchor="middle"
                   fill="#e8c97a"
                   fontSize={5}
                   fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {tagLabel(guestB)}
+                </text>
+              )}
+            </>
+          ) : (
                   style={{ pointerEvents: 'none' }}
                 >
                   {tagLabel(guestB)}
@@ -211,6 +253,7 @@ function Chairs({
       const guestName = guest?.firstName.trim() ?? '';
       const chairX = tableX - CHAIR_H - 4;
       const seatNumL = seatOffset + i + 1;
+      const [line1L, line2L] = displayLines(guest);
       // left chair
       chairsTop.push(
         <g key={`left-${i}`}>
@@ -231,19 +274,32 @@ function Chairs({
             <>
               <text
                 x={chairX - 3}
-                y={cy + CHAIR_W / 2 + 2.5}
+                y={cy + CHAIR_W / 2 + (line2L ? -1 : 2.5)}
                 textAnchor="end"
                 fill="#e8c97a"
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
               >
-                {displayName(guest)}
+                {line1L}
               </text>
+              {line2L && (
+                <text
+                  x={chairX - 3}
+                  y={cy + CHAIR_W / 2 + 6}
+                  textAnchor="end"
+                  fill="#e8c97a"
+                  fontSize={6}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {line2L}
+                </text>
+              )}
               {tagLabel(guest) && (
                 <text
                   x={chairX - 3}
-                  y={cy + CHAIR_W / 2 + 9}
+                  y={cy + CHAIR_W / 2 + (line2L ? 13 : 9)}
                   textAnchor="end"
                   fill="#e8c97a"
                   fontSize={5}
@@ -274,6 +330,7 @@ function Chairs({
       const guestNameR = guestR?.firstName.trim() ?? '';
       const chairXR = tableX + tableW + 4;
       const seatNumR = seatOffset + half + i + 1;
+      const [line1R, line2R] = displayLines(guestR);
       // right chair
       chairsBottom.push(
         <g key={`right-${i}`}>
@@ -294,19 +351,32 @@ function Chairs({
             <>
               <text
                 x={chairXR + CHAIR_H + 3}
-                y={cy + CHAIR_W / 2 + 2.5}
+                y={cy + CHAIR_W / 2 + (line2R ? -1 : 2.5)}
                 textAnchor="start"
                 fill="#e8c97a"
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
               >
-                {displayName(guestR)}
+                {line1R}
               </text>
+              {line2R && (
+                <text
+                  x={chairXR + CHAIR_H + 3}
+                  y={cy + CHAIR_W / 2 + 6}
+                  textAnchor="start"
+                  fill="#e8c97a"
+                  fontSize={6}
+                  fontFamily="Cormorant Garamond, serif"
+                  style={{ pointerEvents: 'none' }}
+                >
+                  {line2R}
+                </text>
+              )}
               {tagLabel(guestR) && (
                 <text
                   x={chairXR + CHAIR_H + 3}
-                  y={cy + CHAIR_W / 2 + 9}
+                  y={cy + CHAIR_W / 2 + (line2R ? 13 : 9)}
                   textAnchor="start"
                   fill="#e8c97a"
                   fontSize={5}

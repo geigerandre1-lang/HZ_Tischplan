@@ -66,6 +66,6 @@ export interface AppState {
 export type Action =
   | { type: 'ADD_TABLE'; payload: { zone: ZoneId; side: Side; position: Position; size: TableSize } }
   | { type: 'REMOVE_TABLE'; payload: { id: string } }
-  | { type: 'UPDATE_TABLE'; payload: { id: string; name: string; size: TableSize; guests: GuestInfo[] } }
+  | { type: 'UPDATE_TABLE'; payload: { id: string; number?: TableNumber; name: string; size: TableSize; guests: GuestInfo[] } }
   | { type: 'LOAD_STATE'; payload: AppState }
   | { type: 'RESET' };

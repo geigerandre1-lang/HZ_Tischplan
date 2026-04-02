@@ -99,6 +99,7 @@ function TablePreview({ size, guests, isBT, onSeatClick }: {
 export function TableModal({ table, onClose }: TableModalProps) {
   const { dispatch } = useFloorPlan();
   const [name, setName] = useState(table.name);
+  const [number, setNumber] = useState(table.number === 'BT' ? '' : String(table.number));
   const [size, setSize] = useState<TableSize>(table.size);
   const [guests, setGuests] = useState<GuestInfo[]>([...table.guests]);
   const [focusedSeat, setFocusedSeat] = useState<number | null>(null);
@@ -111,7 +112,8 @@ export function TableModal({ table, onClose }: TableModalProps) {
   }, [size]);
 
   const handleSave = () => {
-    dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, name, size, guests } });
+    const numVal = table.id === 'bt' ? 'BT' : (parseInt(number, 10) || (table.number as number));
+    dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, number: numVal, name, size, guests } });
     onClose();
   };
 
@@ -155,13 +157,24 @@ export function TableModal({ table, onClose }: TableModalProps) {
 
             {/* Right: form */}
             <div className="flex-1 space-y-4">
-              {/* Table name */}
-              <div>
-                <label className="block text-white/70 text-sm mb-1">Tischname</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)}
-                  placeholder="z.B. Familie Muster" maxLength={60}
-                  className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-gold text-base"
-                  style={{ fontFamily: '"Cormorant Garamond", serif' }} />
+              {/* Table number + name */}
+              <div className="flex gap-2">
+                {!isBT && (
+                  <div className="w-20">
+                    <label className="block text-white/70 text-sm mb-1">Tisch-Nr.</label>
+                    <input type="number" value={number} onChange={e => setNumber(e.target.value)}
+                      min={1} max={99}
+                      className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-gold text-base text-center"
+                      style={{ fontFamily: '"Playfair Display", serif' }} />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <label className="block text-white/70 text-sm mb-1">Tischname</label>
+                  <input type="text" value={name} onChange={e => setName(e.target.value)}
+                    placeholder="z.B. Familie Muster" maxLength={60}
+                    className="w-full bg-white/10 border border-white/20 rounded-lg px-3 py-2 text-white placeholder:text-white/30 focus:outline-none focus:border-gold text-base"
+                    style={{ fontFamily: '"Cormorant Garamond", serif' }} />
+                </div>
               </div>
 
               {/* Size */}

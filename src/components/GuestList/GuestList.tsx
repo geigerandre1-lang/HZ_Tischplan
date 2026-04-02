@@ -552,8 +552,10 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                                   <span className="flex gap-0.5">
                                     {g.tags.map(tagId => {
                                       const tag = GUEST_TAGS.find(t => t.id === tagId);
+                                      const isAllergie = tagId === 'veggie' || tagId === 'gluten' || tagId === 'milch';
                                       return tag ? (
-                                        <span key={tagId} className="text-[9px] font-bold px-1 rounded"
+                                        <span key={tagId}
+                                          className={`text-[9px] font-bold px-1 rounded${isAllergie ? ' ring-1 ring-red-400' : ''}`}
                                           style={{ background: tag.color, color: tag.textColor }}>
                                           {tag.short}
                                         </span>

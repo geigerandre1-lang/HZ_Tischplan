@@ -108,7 +108,7 @@ function reducer(state: AppState, action: Action): AppState {
     }
 
     case 'UPDATE_TABLE': {
-      const { id, name, size, guests } = action.payload;
+      const { id, number, name, size, guests } = action.payload;
       return {
         ...state,
         zones: state.zones.map(z => ({
@@ -117,7 +117,7 @@ function reducer(state: AppState, action: Action): AppState {
             if (t.id !== id) return t;
             // resize guests array
             const newGuests: GuestInfo[] = Array(size).fill(null).map((_, i) => guests[i] ?? { firstName: '', lastName: '', tags: [] });
-            return { ...t, name, size, guests: newGuests };
+            return { ...t, ...(number !== undefined ? { number } : {}), name, size, guests: newGuests };
           }),
         })),
       };
