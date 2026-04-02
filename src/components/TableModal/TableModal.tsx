@@ -1,5 +1,5 @@
 ﻿import React, { useState, useEffect } from 'react';
-import { Table, TableSize, GuestInfo, GuestTag, GUEST_TAGS, MenuChoice, MENU_CHOICES } from '../../types';
+import { Table, TableSize, GuestInfo, GuestTag, GUEST_TAGS, MenuChoice, MENU_CHOICES, RsvpStatus, RSVP_STATUSES } from '../../types';
 import { useFloorPlan } from '../../context/FloorPlanContext';
 import { X } from 'lucide-react';
 
@@ -31,13 +31,28 @@ function TablePreview({ size, guests, isBT, onSeatClick }: {
   const chairFill = (i: number) => {
     const g = guests[i];
     if (!g || !g.firstName.trim()) return 'rgba(255,255,255,0.13)';
+    if ((g.rsvpStatus ?? 'no-entry') === 'not-attending') return 'rgba(75,75,85,0.50)';
+    if ((g.rsvpStatus ?? 'no-entry') === 'no-entry') return 'url(#rsvpHatchPreview)';
     if (g.menu) return MENU_CHOICES.find(m => m.id === g.menu)?.color ?? '#c9a84c';
     if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? '#c9a84c';
     return '#c9a84c';
   };
+  const chairStroke = (i: number) => {
+    const g = guests[i];
+    if (!g || !g.firstName.trim()) return 'rgba(255,255,255,0.28)';
+    if ((g.rsvpStatus ?? 'no-entry') === 'not-attending') return 'rgba(120,120,130,0.55)';
+    if ((g.rsvpStatus ?? 'no-entry') === 'no-entry') return 'rgba(150,150,160,0.45)';
+    return '#e8c97a';
+  };
 
   return (
     <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} width={SVG_W} height={SVG_H} style={{ display: 'block', margin: '0 auto' }}>
+      <defs>
+        <pattern id="rsvpHatchPreview" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45 0 0)">
+          <rect width="5" height="5" fill="rgba(90,90,105,0.35)"/>
+          <line x1="0" y1="0" x2="0" y2="5" stroke="rgba(180,180,180,0.55)" strokeWidth="1.5"/>
+        </pattern>
+      </defs>
       <rect x={tX} y={tY} width={TW} height={TH} rx={6}
         fill={isBT ? '#c9a84c' : '#d6d6d6'} stroke={isBT ? '#e8c97a' : '#a0a0a0'} strokeWidth={2} />
       <text x={tX + TW / 2} y={tY + 16} textAnchor="middle"
@@ -52,7 +67,7 @@ function TablePreview({ size, guests, isBT, onSeatClick }: {
         return (
           <g key={`l${i}`} style={{ cursor: 'pointer' }} onClick={() => onSeatClick(idx)}>
             <rect x={tX - CHAIR_W - 6} y={cy} width={CHAIR_W} height={CHAIR_H} rx={CHAIR_H / 2}
-              fill={chairFill(idx)} stroke={occ ? '#e8c97a' : 'rgba(255,255,255,0.28)'} strokeWidth={1.5} />
+              fill={chairFill(idx)} stroke={chairStroke(idx)} strokeWidth={1.5} />
             <text x={tX - CHAIR_W - 6 + CHAIR_W / 2} y={cy + CHAIR_H / 2 + 3.5}
               textAnchor="middle" fontSize={7} fill={occ ? '#1e2a45' : 'rgba(255,255,255,0.4)'}
               fontFamily='"Cormorant Garamond", serif' style={{ pointerEvents: 'none' }}>
@@ -75,7 +90,7 @@ function TablePreview({ size, guests, isBT, onSeatClick }: {
         return (
           <g key={`r${i}`} style={{ cursor: 'pointer' }} onClick={() => onSeatClick(idx)}>
             <rect x={tX + TW + 6} y={cy} width={CHAIR_W} height={CHAIR_H} rx={CHAIR_H / 2}
-              fill={chairFill(idx)} stroke={occ ? '#e8c97a' : 'rgba(255,255,255,0.28)'} strokeWidth={1.5} />
+              fill={chairFill(idx)} stroke={chairStroke(idx)} strokeWidth={1.5} />
             <text x={tX + TW + 6 + CHAIR_W / 2} y={cy + CHAIR_H / 2 + 3.5}
               textAnchor="middle" fontSize={7} fill={occ ? '#1e2a45' : 'rgba(255,255,255,0.4)'}
               fontFamily='"Cormorant Garamond", serif' style={{ pointerEvents: 'none' }}>
@@ -107,7 +122,7 @@ export function TableModal({ table, onClose }: TableModalProps) {
 
   useEffect(() => {
     setGuests(prev => Array(size).fill(null).map((_, i): GuestInfo =>
-      prev[i] ?? { firstName: '', lastName: '', tags: [] }
+      prev[i] ?? { firstName: '', lastName: '', tags: [], rsvpStatus: 'no-entry' }
     ));
   }, [size]);
 
@@ -225,14 +240,14 @@ export function TableModal({ table, onClose }: TableModalProps) {
                       </span>
                       <input ref={el => { inputRefs.current[i] = el; }} type="text"
                         value={guests[i]?.firstName ?? ''}
-                        onChange={e => setGuests(prev => prev.map((gi, idx) => idx === i ? { ...gi, firstName: e.target.value } : gi))}
+                        onChange={e => setGuests(prev => prev.map((gi, idx) => idx === i ? { ...gi, firstName: e.target.value, rsvpStatus: gi.rsvpStatus ?? 'no-entry' } : gi))}
                         onFocus={() => setFocusedSeat(i)} onBlur={() => setFocusedSeat(null)}
                         placeholder="Vorname" maxLength={50}
                         className="w-20 bg-white/5 border border-white/15 rounded-md px-2 py-1 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-gold"
                         style={{ fontFamily: '"Cormorant Garamond", serif' }} />
                       <input type="text"
                         value={guests[i]?.lastName ?? ''}
-                        onChange={e => setGuests(prev => prev.map((gi, idx) => idx === i ? { ...gi, lastName: e.target.value } : gi))}
+                        onChange={e => setGuests(prev => prev.map((gi, idx) => idx === i ? { ...gi, lastName: e.target.value, rsvpStatus: gi.rsvpStatus ?? 'no-entry' } : gi))}
                         onFocus={() => setFocusedSeat(i)} onBlur={() => setFocusedSeat(null)}
                         placeholder="Nachname" maxLength={50}
                         className="w-24 bg-white/5 border border-white/15 rounded-md px-2 py-1 text-white text-sm placeholder:text-white/25 focus:outline-none focus:border-gold"
@@ -265,6 +280,21 @@ export function TableModal({ table, onClose }: TableModalProps) {
                               className="text-[10px] font-bold px-1 rounded"
                               style={{ background: tag.color, color: tag.textColor, opacity: active ? 1 : 0.28, minWidth: '20px' }}>
                               {tag.short}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="flex gap-1">
+                        {RSVP_STATUSES.map(rs => {
+                          const active = (guests[i]?.rsvpStatus ?? 'no-entry') === rs.id;
+                          return (
+                            <button key={rs.id} title={rs.label}
+                              onClick={() => setGuests(prev => prev.map((gi, idx) =>
+                                idx === i ? { ...gi, rsvpStatus: rs.id as RsvpStatus } : gi
+                              ))}
+                              className="text-[10px] font-bold px-1 rounded"
+                              style={{ background: rs.color, color: rs.textColor, opacity: active ? 1 : 0.28, minWidth: '20px' }}>
+                              {rs.short}
                             </button>
                           );
                         })}

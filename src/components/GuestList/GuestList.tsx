@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { useFloorPlan } from '../../context/FloorPlanContext';
-import { AppState, Table, TableSize, ZoneId, Side, Position, GuestInfo, GuestTag, GUEST_TAGS, MenuChoice, MENU_CHOICES } from '../../types';
+import { AppState, Table, TableSize, ZoneId, Side, Position, GuestInfo, GuestTag, GUEST_TAGS, MenuChoice, MENU_CHOICES, RsvpStatus, RSVP_STATUSES } from '../../types';
 import { ChevronDown, ChevronRight, Download, Search, Upload } from 'lucide-react';
 
 type SortKey = 'number' | 'name';
@@ -14,10 +14,19 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<string | null>(null);
+  const [rsvpDebugRows, setRsvpDebugRows] = useState<Array<{
+    fullName: string;
+    menuLabel: string;
+    rsvpLabel: string;
+    matched: boolean;
+    updated: boolean;
+  }>>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const rsvpInputRef = useRef<HTMLInputElement>(null);
 
   const guestFullName = (g: GuestInfo) => `${g.firstName} ${g.lastName}`.trim();
+  const rsvpLabel = (status: RsvpStatus | undefined) =>
+    RSVP_STATUSES.find(s => s.id === (status ?? 'no-entry'))?.label ?? 'Keine Rückmeldung';
 
   const sorted = useMemo(() => {
     return [...allTables].sort((a, b) => {
@@ -246,6 +255,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
   const handleRsvpImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     setImportError(null);
     setImportSuccess(null);
+    setRsvpDebugRows([]);
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -297,23 +307,23 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
         throw new Error('RSVP-CSV benötigt Spalten für Vorname und Nachname (z.B. "First Name", "Last Name").');
       }
 
-      interface RsvpGuest { firstName: string; lastName: string; menu?: MenuChoice }
+      const parseRsvpStatus = (rawValue: string): RsvpStatus => {
+        const value = rawValue.trim().toLowerCase();
+        if (!value || value.includes('no response')) return 'no-entry';
+        if (value.includes('regret')) return 'not-attending';
+        if (value.includes('attending')) return 'attending';
+        return 'no-entry';
+      };
+
+      interface RsvpGuest { firstName: string; lastName: string; menu?: MenuChoice; rsvpStatus: RsvpStatus }
       const guests: RsvpGuest[] = [];
-      let skippedByRsvp = 0;
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         const firstName = cols[iFirst]?.trim() ?? '';
         const lastName  = cols[iLast]?.trim() ?? '';
         if (!firstName && !lastName) continue;
 
-        // Filter by RSVP if column exists — keep if "attending" OR if column is empty
-        if (iRsvp >= 0) {
-          const rsvpVal = cols[iRsvp]?.trim().toLowerCase() ?? '';
-          if (rsvpVal !== '' && !rsvpVal.includes('attending')) {
-            skippedByRsvp++;
-            continue;
-          }
-        }
+        const rsvpStatus = parseRsvpStatus(cols[iRsvp] ?? '');
 
         let menu: MenuChoice | undefined;
         if (iMenu >= 0) {
@@ -323,44 +333,73 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
           else if (raw.includes('vegetar')) menu = 'vegetarisch';
         }
 
-        guests.push({ firstName, lastName, menu });
+        guests.push({ firstName, lastName, menu, rsvpStatus });
       }
 
       if (guests.length === 0) {
-        const hint = skippedByRsvp > 0 ? ` (${skippedByRsvp} Gäste wegen RSVP Status übersprungen)` : '';
-        throw new Error(`Keine gültigen Gäste gefunden.${hint}`);
+        throw new Error('Keine gültigen Gäste gefunden.');
       }
 
-      // Build name → menu lookup (normalized)
+      // Build name → menu/status lookup (normalized)
       const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ');
-      const menuMap = new Map<string, MenuChoice | undefined>();
-      guests.forEach(g => menuMap.set(norm(`${g.firstName} ${g.lastName}`), g.menu));
+      const rsvpMap = new Map<string, { menu?: MenuChoice; rsvpStatus: RsvpStatus }>();
+      guests.forEach(g => rsvpMap.set(norm(`${g.firstName} ${g.lastName}`), { menu: g.menu, rsvpStatus: g.rsvpStatus }));
 
-      // Apply menus to seated guests by name match
+      // Build lookup of currently seated guests for debug matching information
+      const seatedNameSet = new Set<string>();
+      allTables.forEach(t => {
+        t.guests.forEach(g => {
+          if (g.firstName.trim()) seatedNameSet.add(norm(`${g.firstName} ${g.lastName}`));
+        });
+      });
+
+      // Apply RSVP status and menus to seated guests by name match.
       let updatedCount = 0;
       let matchCount = 0;
+      const updatedNameSet = new Set<string>();
       allTables.forEach(table => {
         const updatedGuests = table.guests.map(g => {
           if (!g.firstName.trim()) return g;
           const key = norm(`${g.firstName} ${g.lastName}`);
-          if (!menuMap.has(key)) return g;
-          matchCount++;
-          const menu = menuMap.get(key);
-          if (menu === g.menu) return g;
+          const incoming = rsvpMap.get(key);
+          const nextStatus = incoming?.rsvpStatus ?? 'no-entry';
+          const nextMenu = incoming?.menu ?? g.menu;
+          if (incoming) matchCount++;
+          const changed = g.menu !== nextMenu || (g.rsvpStatus ?? 'no-entry') !== nextStatus;
+          if (!changed) return g;
           updatedCount++;
-          return { ...g, menu };
+          updatedNameSet.add(key);
+          return { ...g, menu: nextMenu, rsvpStatus: nextStatus };
         });
-        const changed = updatedGuests.some((g, i) => g.menu !== table.guests[i].menu);
+        const changed = updatedGuests.some((g, i) =>
+          g.menu !== table.guests[i].menu || (g.rsvpStatus ?? 'no-entry') !== (table.guests[i].rsvpStatus ?? 'no-entry')
+        );
         if (changed) {
           dispatch({ type: 'UPDATE_TABLE', payload: { id: table.id, name: table.name, size: table.size, guests: updatedGuests } });
         }
       });
 
+      setRsvpDebugRows(
+        guests.map(g => {
+          const key = norm(`${g.firstName} ${g.lastName}`);
+          const menuLabel = g.menu
+            ? (MENU_CHOICES.find(m => m.id === g.menu)?.label ?? g.menu)
+            : 'Kein Menü erkannt';
+          return {
+            fullName: `${g.firstName} ${g.lastName}`.trim(),
+            menuLabel,
+            rsvpLabel: rsvpLabel(g.rsvpStatus),
+            matched: seatedNameSet.has(key),
+            updated: updatedNameSet.has(key),
+          };
+        })
+      );
+
       const menuInfo = iMenu >= 0 ? `Menüspalte: "${header[iMenu]}"` : 'keine Menüspalte gefunden';
       const preview = guests.slice(0, 4).map(g => `${g.firstName} ${g.lastName}`).join(', ');
       const more = guests.length > 4 ? ` +${guests.length - 4} weitere` : '';
       setImportSuccess(
-        `RSVP: ${guests.length} Gäste (${preview}${more}) · ${menuInfo} · ${matchCount} Namensübereinstimmungen · ${updatedCount} Menüs aktualisiert.`
+        `RSVP: ${guests.length} Gäste (${preview}${more}) · ${menuInfo} · ${matchCount} Namensübereinstimmungen · ${updatedCount} Status/Menüs aktualisiert.`
       );
     };
 
@@ -425,6 +464,30 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
       {importSuccess && (
         <div className="mb-4 px-4 py-3 rounded-lg bg-green-900/40 border border-green-500/40 text-green-300 text-sm">
           ✓ {importSuccess}
+        </div>
+      )}
+      {isEditMode && rsvpDebugRows.length > 0 && (
+        <div className="mb-5 rounded-xl border border-white/15 bg-white/5 overflow-hidden">
+          <div className="px-4 py-2 border-b border-white/10 text-sm text-white/75" style={{ fontFamily: '"Playfair Display", serif' }}>
+            RSVP Debugliste ({rsvpDebugRows.length})
+          </div>
+          <div className="max-h-56 overflow-y-auto">
+            {rsvpDebugRows.map((row, i) => (
+              <div key={`${row.fullName}-${i}`} className="px-4 py-2 text-sm border-b border-white/5 flex items-center justify-between gap-3">
+                <span className="text-white/90">{row.fullName || 'Ohne Namen'}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs px-2 py-0.5 rounded bg-white/10 text-white/80">{row.menuLabel}</span>
+                  <span className="text-xs px-2 py-0.5 rounded bg-sky-900/40 text-sky-100">{row.rsvpLabel}</span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${row.matched ? 'bg-emerald-600/30 text-emerald-200' : 'bg-red-600/30 text-red-200'}`}>
+                    {row.matched ? 'Gefunden' : 'Nicht gefunden'}
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded ${row.updated ? 'bg-gold/30 text-gold' : 'bg-white/10 text-white/60'}`}>
+                    {row.updated ? 'Menü gesetzt' : 'Unverändert'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -530,6 +593,7 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                           {table.guests.map((g, i) => {
                             const fullName = guestFullName(g);
                             const menuEntry = g.menu ? MENU_CHOICES.find(m => m.id === g.menu) : null;
+                            const rsvpEntry = RSVP_STATUSES.find(s => s.id === (g.rsvpStatus ?? 'no-entry'));
                             return (
                               <li key={i} className="flex items-center gap-2 text-sm">
                                 <span className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full text-xs font-bold"
@@ -546,6 +610,12 @@ export function GuestList({ onTableClick }: { onTableClick: (t: Table) => void }
                                   <span className="text-[9px] font-bold px-1 rounded"
                                     style={{ background: menuEntry.color, color: menuEntry.textColor }}>
                                     {menuEntry.short}
+                                  </span>
+                                )}
+                                {fullName && rsvpEntry && (
+                                  <span className="text-[9px] font-bold px-1 rounded"
+                                    style={{ background: rsvpEntry.color, color: rsvpEntry.textColor }}>
+                                    {rsvpEntry.label}
                                   </span>
                                 )}
                                 {g.tags.length > 0 && (

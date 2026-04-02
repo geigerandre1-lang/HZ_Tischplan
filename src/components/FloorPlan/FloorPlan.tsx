@@ -134,6 +134,12 @@ export function FloorPlan({ onTableClick, onTableRemove }: FloorPlanProps) {
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
+        <defs>
+          <pattern id="rsvpHatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45 0 0)">
+            <rect width="5" height="5" fill="rgba(90,90,105,0.35)"/>
+            <line x1="0" y1="0" x2="0" y2="5" stroke="rgba(180,180,180,0.55)" strokeWidth="1.5"/>
+          </pattern>
+        </defs>
         <g transform={`translate(${transform.tx}, ${transform.ty}) scale(${transform.scale})`}>
           {/* Hall background */}
           <rect x={0} y={0} width={SVG_W} height={SVG_H} fill="#1e2a45" />

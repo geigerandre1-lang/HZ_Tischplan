@@ -19,6 +19,7 @@ export const GUEST_TAGS: { id: GuestTag; label: string; short: string; color: st
 
 // Menu choice (from RSVP)
 export type MenuChoice = 'fleisch' | 'fisch' | 'vegetarisch';
+export type RsvpStatus = 'attending' | 'not-attending' | 'no-entry';
 
 export const MENU_CHOICES: { id: MenuChoice; label: string; short: string; color: string; textColor: string }[] = [
   { id: 'fleisch',     label: 'Fleisch',     short: 'M',  color: '#c0392b', textColor: '#fff' },
@@ -26,11 +27,18 @@ export const MENU_CHOICES: { id: MenuChoice; label: string; short: string; color
   { id: 'vegetarisch', label: 'Vegetarisch', short: 'Vg', color: '#27ae60', textColor: '#fff' },
 ];
 
+export const RSVP_STATUSES: { id: RsvpStatus; label: string; short: string; color: string; textColor: string }[] = [
+  { id: 'attending',     label: 'Zugesagt',          short: 'Z', color: '#2d6e3e', textColor: '#fff' },
+  { id: 'not-attending', label: 'Abgesagt',           short: 'A', color: '#7a2525', textColor: '#fff' },
+  { id: 'no-entry',      label: 'Keine Rückmeldung', short: '?', color: '#3a3a5a', textColor: '#aaa' },
+];
+
 export interface GuestInfo {
   firstName: string;
   lastName: string;
   tags: GuestTag[];
   menu?: MenuChoice;
+  rsvpStatus?: RsvpStatus;
 }
 
 /** Returns the display name based on showFullName flag */

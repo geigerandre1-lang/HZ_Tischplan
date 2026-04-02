@@ -20,6 +20,11 @@ const OCCUPIED_COLOR = '#c9a84c';
 const EMPTY_COLOR = 'rgba(255,255,255,0.13)';
 const OCCUPIED_STROKE = '#e8c97a';
 const EMPTY_STROKE = 'rgba(255,255,255,0.25)';
+const NA_FILL   = 'rgba(75,75,85,0.50)';
+const NA_STROKE = 'rgba(120,120,130,0.55)';
+const NE_STROKE = 'rgba(150,150,160,0.45)';
+const NA_TEXT   = 'rgba(140,140,150,0.65)';
+const NE_TEXT   = 'rgba(170,170,180,0.75)';
 
 function Chairs({
   count,
@@ -57,13 +62,26 @@ function Chairs({
   };
   const guestFill = (g: GuestInfo | undefined): string => {
     if (!g || !g.firstName.trim()) return EMPTY_COLOR;
+    const st = g.rsvpStatus ?? 'no-entry';
+    if (st === 'not-attending') return NA_FILL;
+    if (st === 'no-entry') return 'url(#rsvpHatch)';
     if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? OCCUPIED_COLOR;
     return OCCUPIED_COLOR;
   };
   const guestStroke = (g: GuestInfo | undefined): string => {
     if (!g || !g.firstName.trim()) return EMPTY_STROKE;
+    const st = g.rsvpStatus ?? 'no-entry';
+    if (st === 'not-attending') return NA_STROKE;
+    if (st === 'no-entry') return NE_STROKE;
     if (g.tags.length > 0) return GUEST_TAGS.find(t => t.id === g.tags[0])?.color ?? OCCUPIED_STROKE;
     return OCCUPIED_STROKE;
+  };
+  const guestTextColor = (g: GuestInfo | undefined): string => {
+    if (!g || !g.firstName.trim()) return '#e8c97a';
+    const st = g.rsvpStatus ?? 'no-entry';
+    if (st === 'not-attending') return NA_TEXT;
+    if (st === 'no-entry') return NE_TEXT;
+    return '#e8c97a';
   };
   const tagLabel = (g: GuestInfo | undefined): string => {
     if (!g || g.tags.length === 0) return '';
@@ -108,7 +126,7 @@ function Chairs({
                 x={cx + CHAIR_W / 2}
                 y={chairY - (line2 ? 8 : 2)}
                 textAnchor="middle"
-                fill="#e8c97a"
+                fill={guestTextColor(guest)}
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
@@ -120,7 +138,7 @@ function Chairs({
                   x={cx + CHAIR_W / 2}
                   y={chairY - 1}
                   textAnchor="middle"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guest)}
                   fontSize={6}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -133,7 +151,7 @@ function Chairs({
                   x={cx + CHAIR_W / 2}
                   y={chairY - (line2 ? 16 : 9)}
                   textAnchor="middle"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guest)}
                   fontSize={5}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -185,7 +203,7 @@ function Chairs({
                 x={cx + CHAIR_W / 2}
                 y={chairYB + CHAIR_H + 8}
                 textAnchor="middle"
-                fill="#e8c97a"
+                fill={guestTextColor(guestB)}
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
@@ -197,7 +215,7 @@ function Chairs({
                   x={cx + CHAIR_W / 2}
                   y={chairYB + CHAIR_H + 15}
                   textAnchor="middle"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guestB)}
                   fontSize={6}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -210,7 +228,7 @@ function Chairs({
                   x={cx + CHAIR_W / 2}
                   y={chairYB + CHAIR_H + (line2B ? 22 : 14)}
                   textAnchor="middle"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guestB)}
                   fontSize={5}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -269,7 +287,7 @@ function Chairs({
                 x={chairX - 3}
                 y={cy + CHAIR_W / 2 + (line2L ? -1 : 2.5)}
                 textAnchor="end"
-                fill="#e8c97a"
+                fill={guestTextColor(guest)}
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
@@ -281,7 +299,7 @@ function Chairs({
                   x={chairX - 3}
                   y={cy + CHAIR_W / 2 + 6}
                   textAnchor="end"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guest)}
                   fontSize={6}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -294,7 +312,7 @@ function Chairs({
                   x={chairX - 3}
                   y={cy + CHAIR_W / 2 + (line2L ? 13 : 9)}
                   textAnchor="end"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guest)}
                   fontSize={5}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -346,7 +364,7 @@ function Chairs({
                 x={chairXR + CHAIR_H + 3}
                 y={cy + CHAIR_W / 2 + (line2R ? -1 : 2.5)}
                 textAnchor="start"
-                fill="#e8c97a"
+                fill={guestTextColor(guestR)}
                 fontSize={6.5}
                 fontFamily="Cormorant Garamond, serif"
                 style={{ pointerEvents: 'none' }}
@@ -358,7 +376,7 @@ function Chairs({
                   x={chairXR + CHAIR_H + 3}
                   y={cy + CHAIR_W / 2 + 6}
                   textAnchor="start"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guestR)}
                   fontSize={6}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
@@ -371,7 +389,7 @@ function Chairs({
                   x={chairXR + CHAIR_H + 3}
                   y={cy + CHAIR_W / 2 + (line2R ? 13 : 9)}
                   textAnchor="start"
-                  fill="#e8c97a"
+                  fill={guestTextColor(guestR)}
                   fontSize={5}
                   fontFamily="Cormorant Garamond, serif"
                   style={{ pointerEvents: 'none' }}
